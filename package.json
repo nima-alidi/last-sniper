@@ -1,0 +1,65 @@
+{
+  "name": "last-sniper",
+  "productName": "Last Sniper",
+  "version": "1.0.0",
+  "description": "First-person rooftop sniper game with solo and multiplayer modes",
+  "main": "main.js",
+  "scripts": {
+    "assets": "powershell -ExecutionPolicy Bypass -File tools/get-assets.ps1 -Res 2k -SkyRes 4k",
+    "vendor": "node tools/vendor.js",
+    "prestart": "node tools/vendor.js",
+    "start": "electron .",
+    "predev": "node tools/vendor.js",
+    "dev": "node tools/dev-server.js",
+    "server": "node server/server.js",
+    "predist": "node tools/vendor.js",
+    "dist": "electron-builder --win nsis"
+  },
+  "keywords": ["game", "sniper", "threejs", "electron"],
+  "author": "Last Sniper",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "dependencies": {
+    "three": "^0.170.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.lastsniper.game",
+    "productName": "Last Sniper",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": [
+      "main.js",
+      "preload.js",
+      "server/**",
+      "src/**",
+      "assets/**",
+      "build/icon.png",
+      "!**/*.part",
+      "!assets/sounds/raw/**",
+      "!assets/models/character_soldier.glb",
+      "!assets/models/swat.glb",
+      "!assets/models/soldier.glb",
+      "!node_modules/three/src/**",
+      "!node_modules/three/build/three.cjs",
+      "!node_modules/three/build/three.webgpu*.js",
+      "!node_modules/three/build/three.tsl*.js"
+    ],
+    "asarUnpack": [],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Last Sniper",
+      "artifactName": "LastSniper-Setup-${version}.exe"
+    }
+  }
+}

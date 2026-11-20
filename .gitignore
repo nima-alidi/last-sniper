@@ -1,0 +1,11 @@
+node_modules/
+dist/
+src/vendor/
+
+# downloaded by tools/get-assets.ps1 (large, or not redistributable on their own)
+assets/textures/
+assets/hdri/
+assets/models/
+assets/sounds/raw/
+assets/sounds/*.wav
+*.part

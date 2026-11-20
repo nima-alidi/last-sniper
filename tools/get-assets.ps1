@@ -10,7 +10,7 @@ $tex = 'asphalt_02','brushed_concrete','gravel_concrete_03','red_brick_03','whit
 $map = [ordered]@{ 'Diffuse'='diff'; 'nor_gl'='nor'; 'arm'='arm' }
 
 function Get-File($url, $out) {
-  if ($url -notmatch '^https://dl\.polyhaven\.org/') { throw "unexpected url $url" }
+  if ($url -notmatch '^https://(dl\.polyhaven\.org|static\.poly\.pizza)/') { throw "unexpected url $url" }
   $tmp = "$out.part"
   for ($i = 1; $i -le 8; $i++) {
     & curl.exe -sS -L --fail --retry 3 --connect-timeout 30 -C - -o $tmp $url
@@ -45,6 +45,20 @@ $model = Join-Path $root 'models\mixamo_soldier.glb'
 if ($Force -or -not (Test-Path $model)) {
   & curl.exe -sS -L --fail --retry 5 -o $model 'https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/gltf/Soldier.glb'
   "ok soldier model"
+}
+# pedestrians / targets: 15 animated characters by Quaternius (CC0) from poly.pizza
+$people = Join-Path $root 'models\people'
+New-Item -ItemType Directory -Force $people | Out-Null
+$ppl = [ordered]@{
+  business_man = 'e599abbe-7d73-488c-9d7e-3ead281e705c'; casual = '90a9e2d4-053f-42f1-99a2-8f5e1180ea7f'; hoodie = 'bcd66ec5-5e81-4901-a222-47abc875fe2a'
+  worker = '3a5f3056-ffe6-42eb-bd52-122afcbd22b2'; farmer = '81f2f0cf-6f53-4b57-92ea-dba0928620f2'; woman_b = 'ba7a1955-ea51-4cb9-a561-188bdef0a6c7'
+  woman_c = '46d6db5a-3c9f-4238-8cdf-8eb7194498dc'; woman_casual = '51d5abdd-bb87-4b8d-9967-21738ffb8437'; man_in_suit = '66b57880-bcb0-479a-8d72-5c3e88afaa39'
+  adventurer = '69689495-028d-4b81-8678-792338a5693e'; woman_tank = '9a6a3e55-23ce-4d5c-89bc-7d3f30307ed0'; woman_plain = '906a0cbe-b0a4-4312-b898-0f974b6f6771'
+  woman_dress = 'a642af96-e239-4c5f-b50d-7661ff51deec'; punk_a = 'e56f23b5-3270-406f-8924-f77cad980c43'; punk_b = '1d368679-1d9a-4d5c-9095-877144b02d00'
+}
+foreach ($k in $ppl.Keys) {
+  $out = Join-Path $people "$k.glb"
+  if ($Force -or -not (Test-Path $out)) { Get-File "https://static.poly.pizza/$($ppl[$k]).glb" $out; "ok person $k" }
 }
 # gun recordings (CC0, OpenGameArt "Gunshot Sounds"), cut into clips by tools/slice-sounds.js
 $raw = Join-Path $root 'sounds\raw'

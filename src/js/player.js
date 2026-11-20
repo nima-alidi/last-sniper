@@ -12,7 +12,7 @@ const ZEROS = [100, 200, 300, 400, 500];
 const MUZZLE_V = 850, GRAV = 9.81;
 const MAG = 5, BOLT_TIME = 1.35, RELOAD_TIME = 1.6;
 const GRAVITY = 12, JUMP_V = 5.6, STEP = 0.35, RADIUS = 0.35; // jump apex ~1.3 m, clears a 1 m parapet
-const DOWN = new THREE.Vector3(0, -1, 0);
+const DOWN = new THREE.Vector3(0, -1, 0), UP = new THREE.Vector3(0, 1, 0);
 const rc = new THREE.Raycaster();
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
 const streakMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
@@ -39,7 +39,7 @@ export class Player {
       lastHurt: -99, dmgFlash: 0, stepT: 0, range: 0, rangeT: 0, flareT: 0, flareVis: false, sway: { x: 0, y: 0 },
     });
     for (const b of this.bullets) G.scene && G.scene.remove(b.streak);
-    this.bullets.length = 0;
+    this.bullets.length = 0; this.bcam = null; G.timeScale = 1;
   }
 
   spawnAt(roof) {
@@ -73,7 +73,10 @@ export class Player {
       if (e.code === 'KeyZ') this.zi = (this.zi + 1) % ZOOMS.length;
       if (e.code === 'PageUp') { this.zeroIdx = Math.min(ZEROS.length - 1, this.zeroIdx + 1); sfx.ui(); }
       if (e.code === 'PageDown') { this.zeroIdx = Math.max(0, this.zeroIdx - 1); sfx.ui(); }
-      if (e.code === 'KeyC' || e.code === 'ControlLeft') this.crouch = !this.crouch;
+      if (e.code === 'KeyC' || e.code === 'ControlLeft') {
+        if (this.crouch && !this.canStand()) hud.message('NOT ENOUGH ROOM TO STAND UP', 1.6);   // tight space: stay down, no clipping
+        else this.crouch = !this.crouch;
+      }
       if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
     });
     addEventListener('keyup', e => { this.keys[e.code] = false; });
@@ -101,7 +104,7 @@ export class Player {
     this.reload = RELOAD_TIME; this.ads = false; this.weapon.startReload(RELOAD_TIME); sfx.reload(RELOAD_TIME);
   }
   fire() {
-    if (this.cool > 0 || this.reload > 0 || this.sprintAmt > 0.5) return;
+    if (this.cool > 0 || this.reload > 0 || this.sprintAmt > 0.5 || this.bcam) return;
     if (this.mag <= 0) { sfx.dry(); this.startReload(); return; }
     this.mag--; this.cool = BOLT_TIME;
     sfx.shot(); sfx.bolt(); this.weapon.fire();
@@ -118,7 +121,15 @@ export class Player {
     const muzzle = this.weapon.muzzleWorld(new THREE.Vector3());
     if (!scoped) fx.puff(muzzle, [0.8, 0.8, 0.8], 0.3, 0.8, 0.4);
     const streak = new THREE.Mesh(streakGeo, streakMat); streak.visible = false; G.scene.add(streak);
-    this.bullets.push({ pos: origin.clone(), vel: dir.multiplyScalar(MUZZLE_V), life: 2.5, dist: 0, from: scoped ? origin.clone().add(_v.set(0, -0.2, 0)) : muzzle, streak });
+    const bullet = { pos: origin.clone(), vel: dir.multiplyScalar(MUZZLE_V), life: 2.5, dist: 0, from: scoped ? origin.clone().add(_v.set(0, -0.2, 0)) : muzzle, streak, done: false, end: null };
+    this.bullets.push(bullet);
+    if (G.onFire) G.onFire(bullet);          // story mode may start the slow-motion bullet camera
+  }
+  // slow motion: the camera rides behind the bullet and stays on the impact for a moment
+  startBulletCam(b) {
+    if (this.bcam) return;
+    this.bcam = { b, hold: 0, cam: new THREE.Vector3() };
+    G.timeScale = 0.1; this.ads = false;
   }
 
   stepBullets(dt) {
@@ -160,7 +171,7 @@ export class Player {
       }
     }
   }
-  finishBullet(b, end) { fx.tracer(b.from, end.clone()); G.onPlayerShot && G.onPlayerShot(b.from, end); }
+  finishBullet(b, end) { b.done = true; b.end = end.clone(); fx.tracer(b.from, end.clone()); G.onPlayerShot && G.onPlayerShot(b.from, end); }
 
   // ---------- damage ----------
   hurtFrom(fromPos) {
@@ -196,8 +207,24 @@ export class Player {
     }
     return false;
   }
+  // is there room above the crouching player to stand up? (5 rays: centre and the four sides of the body)
+  canStand() {
+    const list = G.world.near(this.x, this.z, 4), need = 1.95 - 0.9;
+    for (const [ox, oz] of [[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]]) {
+      rc.set(_v.set(this.x + ox, this.y + 0.9, this.z + oz), UP); rc.far = need;
+      if (rc.intersectObjects(list, false).length) return false;
+    }
+    return true;
+  }
   physics(dt) {
     const list = G.world.near(this.x, this.z, 8);
+    // head bump: jumping under a low ceiling stops the rise instead of passing through it
+    if (!this.grounded && this.vy > 0) {
+      rc.set(_v.set(this.x, this.y + 1.7, this.z), UP); rc.far = this.vy * dt + 0.2;
+      if (rc.intersectObjects(list, false).length) this.vy = 0;
+    }
+    // if something low is now above a crouching player (e.g. walked under an overhang) never raise the eye into it
+    if (this.grounded && !this.crouch && !this.canStand()) { this.crouch = true; hud.message('LOW CEILING — CROUCHING', 1.2); }
     // horizontal, axis by axis so you slide along walls
     const sx = this.vx * dt, sz = this.vz * dt;
     // a wall just stops the step; velocity is kept so a jump carries on once it clears a parapet
@@ -285,9 +312,26 @@ export class Player {
     const deadDrop = this.alive ? 0 : 0.9;
     camera.position.set(this.x, this.y + this.eye - deadDrop, this.z);
     camera.rotation.set(this.pitch + this.sway.y + this.kick, this.yaw + this.sway.x, this.alive ? 0 : 0.5);
+    // slow-motion bullet camera (overrides the normal view while it lasts)
+    if (this.bcam) {
+      const bc = this.bcam, b = bc.b, real = G.realDt || dt;
+      if (!b.done) {
+        const v = _v.copy(b.vel).normalize();
+        camera.position.copy(b.pos).addScaledVector(v, -3.4);
+        camera.position.y += 0.55; camera.position.x += v.z * 0.55; camera.position.z -= v.x * 0.55;
+        camera.lookAt(_v2.copy(b.pos).addScaledVector(v, 7));
+        bc.cam.copy(camera.position);
+      } else {
+        bc.hold += real;
+        bc.cam.lerp(b.end, Math.min(1, real * 0.18));            // slow push-in on the impact
+        camera.position.copy(bc.cam); camera.lookAt(b.end);
+        if (bc.hold > 1.5) { this.bcam = null; G.timeScale = 1; }
+      }
+      if (Math.abs(camera.fov - 52) > 0.01) { camera.fov = 52; camera.updateProjectionMatrix(); }
+    }
     updateShadow(camera.position);
     // weapon
-    this.weapon.update(dt, { ads: this.scope > 0.05 && wantAds, moving: this.moving, sprint: this.sprint, crouch: this.crouch, mouseDX: this.mdx, mouseDY: this.mdy, visible: this.scope < 0.9 && this.alive });
+    this.weapon.update(dt, { ads: this.scope > 0.05 && wantAds, moving: this.moving, sprint: this.sprint, crouch: this.crouch, mouseDX: this.mdx, mouseDY: this.mdy, visible: this.scope < 0.9 && this.alive && !this.bcam });
     this.mdx = 0; this.mdy = 0;
     this.stepBullets(dt);
     // range finder (throttled)
@@ -319,9 +363,9 @@ export class Player {
       }
     }
     return {
-      t, scope: this.scope, sway: this.sway, range: this.range, zoomX: Math.round(settings.fov / ZOOMS[this.zi] * 1.5),
+      t, scope: this.bcam ? 0 : this.scope, sway: this.sway, range: this.range, zoomX: Math.round(settings.fov / ZOOMS[this.zi] * 1.5),
       zero: ZEROS[this.zeroIdx], breath: this.breath, winded: this.winded > 0, holding: this.holding, moving: this.moving,
-      milPx: 0.001 * innerHeight / (2 * Math.tan(fovR / 2)), headingRad: -this.yaw, flare, crosshair: this.alive && this.sprintAmt < 0.5,
+      milPx: 0.001 * innerHeight / (2 * Math.tan(fovR / 2)), headingRad: -this.yaw, flare, crosshair: this.alive && this.sprintAmt < 0.5 && !this.bcam,
     };
   }
 }

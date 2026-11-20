@@ -10,7 +10,9 @@ export const TOWER = { y: 48, half: 11, parapet: 1.0 };
 
 const CGEO = new THREE.BoxGeometry(1, 1, 1), CMAT = new THREE.MeshBasicMaterial();
 
-export function buildWorld(seed) {
+// opts.story: lower buildings and more parks/plazas around the tower, so the streets stay visible from the tower
+export function buildWorld(seed, opts = {}) {
+  const story = !!opts.story;
   const R = mulberry32(seed);
   const rr = (a, b) => a + R() * (b - a);
   const pick = a => a[Math.floor(R() * a.length)];
@@ -119,19 +121,21 @@ export function buildWorld(seed) {
   // ---------- window nest: an open window recess in a facade facing the tower ----------
   let windowCount = 0;
   const INTERIOR = new THREE.MeshStandardMaterial({ color: 0x0b0d10, roughness: 1 });
-  function windowNest(x, z, w, d, top, dist) {
-    const L = Math.hypot(x, z), ox = -x / L, oz = -z / L;          // direction to the tower
+  // returns the offset used (so a second window in the same building can keep its distance) or null
+  function windowNest(bx, bz, bw, bd, top, dist, bid, avoid) {
+    const L = Math.hypot(bx, bz) || 1, ox = -bx / L, oz = -bz / L;   // direction to the tower
     const alongX = Math.abs(ox) > Math.abs(oz);
     const nx = alongX ? Math.sign(ox) : 0, nz = alongX ? 0 : Math.sign(oz); // outward face normal
-    const faceW = alongX ? d : w;
-    if (faceW < 7) return;
+    const faceW = alongX ? bd : bw;
+    if (faceW < 7) return null;
     const tx = -nz, tz = nx;                                           // tangent along the face
     const off = rr(-faceW / 2 + 2.5, faceW / 2 - 2.5);
+    if (avoid !== undefined && Math.abs(off - avoid) < 4.5) return null;
     // floor height: high enough to be seen from the tower (same rule as rooftop nests), on a storey line
     const minY = Math.max(6, TOWER.y + 1.65 - 1.6 - 0.15 * dist);
     const yF = Math.ceil(minY / 3.5) * 3.5 + Math.floor(R() * 2) * 3.5;
-    if (yF > top - 3.5) return;
-    const fx = x + nx * (alongX ? w / 2 : d / 2), fz = z + nz * (alongX ? w / 2 : d / 2); // face centre line
+    if (yF > top - 3.5) return null;
+    const fx = bx + nx * (alongX ? bw / 2 : bd / 2), fz = bz + nz * (alongX ? bw / 2 : bd / 2); // face centre line
     const cx = fx + tx * off, cz = fz + tz * off;
     const W = 2.0, Hh = 2.7, D = 1.1, ry = Math.atan2(nx, nz);
     const at = (n, t) => [cx + nx * n + tx * t, cz + nz * n + tz * t];
@@ -142,65 +146,220 @@ export function buildWorld(seed) {
     p = at(D / 2, 0); sbox(p[0], yF + Hh + 0.12, p[1], W + 0.4, 0.24, D, MAT.concrete, { ry });      // lintel / roof
     for (const s of [-1, 1]) { p = at(D / 2, s * (W / 2 + 0.1)); sbox(p[0], yF + Hh / 2, p[1], 0.2, Hh, D, MAT.concrete, { ry }); }
     p = at(0.45, 0);
-    nests.push({ x: p[0], z: p[1], y: yF, dx: nx, dz: nz, busy: false, window: true });
+    nests.push({ x: p[0], z: p[1], y: yF, dx: nx, dz: nz, busy: false, window: true, bid });
     windowCount++;
+    return off;
+  }
+
+  // ---------- architectural details ----------
+  const FACES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  function gableRoof(x, z, w, d, y) {
+    const alongX = w >= d, W = alongX ? d : w, Ln = (alongX ? w : d) + 0.8;
+    const ridge = Math.min(4.8, W * 0.34);
+    const s = new THREE.Shape(); s.moveTo(-W / 2 - 0.4, 0); s.lineTo(W / 2 + 0.4, 0); s.lineTo(0, ridge); s.closePath();
+    const g = new THREE.ExtrudeGeometry(s, { depth: Ln, bevelEnabled: false });
+    g.translate(0, 0, -Ln / 2);
+    if (alongX) g.rotateY(Math.PI / 2);
+    const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 3, uv.getY(i) / 3);
+    addGeo(g, MAT.tiles, x, y, z);
+  }
+  function billboard(x, y, z, ry, w = 10, h = 5) {
+    const m = pick(MAT.signs);
+    const panel = new THREE.BoxGeometry(w, h, 0.3); panel.translate(0, 3 + h / 2, 0); addGeo(panel, m, x, y, z, ry);
+    for (const s of [-1, 1]) { const p = new THREE.BoxGeometry(0.3, 3.2, 0.3); p.translate(s * w * 0.34, 1.6, -0.1); addGeo(p, MAT.darkMetal, x, y, z, ry); }
+  }
+  function crown(cx, cz, tw, td, h, dist, occ) {
+    const r = R(), m = Math.min(tw, td);
+    if (r < 0.16) {                                  // radio mast on a small base
+      sbox(cx, h + 1.2, cz, tw * 0.28, 2.4, td * 0.28, MAT.concrete);
+      const H = rr(12, 20), g = new THREE.ConeGeometry(0.5, H, 6); addGeo(g, MAT.metal, cx, h + 2.4 + H / 2, cz);
+      occ.push({ x: cx, z: cz, r: m * 0.25 });
+    } else if (r < 0.3) {                            // copper pyramid
+      const H = rr(5, 9), g = new THREE.ConeGeometry(m * 0.56, H, 4); g.rotateY(Math.PI / 4);
+      addGeo(g, MAT.copper, cx, h + H / 2, cz); occ.push({ x: cx, z: cz, r: m * 0.45 });
+    } else if (r < 0.4) {                            // dome on a drum
+      const rad = m * 0.36;
+      cyl(cx, h + 0.8, cz, rad, rad, 1.6, MAT.concrete, 16, false);
+      addGeo(new THREE.SphereGeometry(rad, 18, 10, 0, TAU, 0, Math.PI / 2), MAT.copper, cx, h + 1.6, cz);
+      occ.push({ x: cx, z: cz, r: rad + 0.5 });
+    } else if (r < 0.54 && dist < 300) {             // rooftop billboard
+      const a = Math.floor(R() * 4), [nx, nz] = FACES[a];
+      const out = (nx !== 0 ? tw : td) / 2 - 1.4, ry = Math.atan2(nx, nz);
+      billboard(cx + nx * out, h, cz + nz * out, ry);
+      occ.push({ x: cx + nx * out, z: cz + nz * out, r: 5 });
+    } else if (r < 0.64 && tw > 14 && td > 14) {     // plant room
+      sbox(cx, h + 2, cz, tw * 0.4, 4, td * 0.4, MAT.concrete);
+      sbox(cx, h + 4.15, cz, tw * 0.44, 0.3, td * 0.44, MAT.darkMetal, { collide: false });
+      occ.push({ x: cx, z: cz, r: m * 0.3 });
+    }
+  }
+  function decorate(cx, cz, bw, bd, top, mat, near, minor = false) {
+    const L = Math.hypot(cx, cz) || 1, tdx = -cx / L, tdz = -cz / L;
+    const isGlass = FACADES.glass.includes(mat), isBrick = FACADES.brick.includes(mat);
+    for (const [nx, nz] of FACES) {
+      const along = nx !== 0 ? bd : bw, out = (nx !== 0 ? bw : bd) / 2;
+      const px = cx + nx * (out + 0.15), pz = cz + nz * (out + 0.15), tx = -nz, tz = nx, ry = Math.atan2(nx, nz);
+      // coloured shop awnings
+      if (along > 8) {
+        const n = Math.floor(along / 7);
+        for (let i = 0; i < n; i++) {
+          if (R() < 0.35) continue;
+          const t = (i + 0.5) * along / n - along / 2;
+          const g = new THREE.BoxGeometry(along / n - 1.3, 0.08, 1.7); g.rotateX(0.22); g.translate(0, 0, 0.85);
+          addGeo(g, pick(MAT.awnings), px + tx * t, 3.7, pz + tz * t, ry);
+        }
+      }
+      if (minor || nx * tdx + nz * tdz > 0.7) continue;   // keep the faces towards the tower clear for window nests
+      if (isGlass) {                                      // vertical fins
+        const nf = Math.floor(along / 4);
+        for (let i = 1; i < nf; i++) {
+          const t = i * along / nf - along / 2;
+          const g = new THREE.BoxGeometry(0.28, top - 6, 0.55); g.translate(0, 0, 0.27);
+          addGeo(g, MAT.darkMetal, px + tx * t, 6 + (top - 6) / 2, pz + tz * t, ry);
+        }
+      }
+      if (isBrick && near) {                              // balconies
+        const cols = Math.max(1, Math.floor(along / 9));
+        for (let y = 7; y < Math.min(top - 3, 30); y += 3.5) for (let i = 0; i < cols; i++) {
+          if (R() < 0.4) continue;
+          const t = (i + 0.5) * along / cols - along / 2;
+          const s = new THREE.BoxGeometry(2.8, 0.16, 1.3); s.translate(0, 0, 0.65); addGeo(s, MAT.concrete, px + tx * t, y, pz + tz * t, ry);
+          const rl = new THREE.BoxGeometry(2.8, 0.9, 0.06); rl.translate(0, 0.53, 1.27); addGeo(rl, MAT.darkMetal, px + tx * t, y, pz + tz * t, ry);
+        }
+      }
+      if (R() < 0.2 && top > 14) {                        // neon blade sign near a corner
+        const t = (R() < 0.5 ? -1 : 1) * (along / 2 - 1.2);
+        const g = new THREE.BoxGeometry(0.3, 1.4, 2.8); g.translate(0, 0, 1.55);
+        addGeo(g, pick(MAT.signs), px + tx * t, 7 + R() * 4, pz + tz * t, ry);
+      }
+    }
+    if (!minor && R() < 0.55) for (let y = 10.5; y < top - 3; y += 10.5) sbox(cx, y, cz, bw + 0.5, 0.3, bd + 0.5, MAT.concrete, { collide: false }); // ledge bands
   }
 
   // ---------- buildings ----------
+  let bidCounter = 0;
   function pickFacade(h) {
     if (h < 34 && R() < 0.6) return pick(FACADES.brick);
     if (h > 55 && R() < 0.6) return pick(FACADES.glass);
     return pick([...FACADES.office, ...FACADES.tiles, FACADES.glass[0], FACADES.brick[0]]);
   }
   function building(x, z, w, d, h, dist, opts = {}) {
-    const near = dist < 360;
+    const near = dist < 360, bid = bidCounter++;
     const mat = opts.facade || pickFacade(h);
     const tu = mat.userData.tu, tv = mat.userData.tv;
-    const body = (bw, bd, y0, y1) => {
+    const volume = (cx, cz, bw, bd, y0, y1, m = mat) => {
       const hh = y1 - y0;
-      addGeo(boxUV(bw, hh, bd, tu, tv, y0), mat, x, y0 + hh / 2, z);
-      addCollider(x, y0 + hh / 2, z, bw, hh, bd);
+      addGeo(boxUV(bw, hh, bd, m.userData.tu, m.userData.tv, y0), m, cx, y0 + hh / 2, cz);
+      addCollider(cx, y0 + hh / 2, cz, bw, hh, bd);
     };
-    let tw = w, td = d, baseTop = h;
-    if (!opts.noSetback && near && h > 42 && w > 18 && d > 18 && R() < 0.35) {
-      const h1 = Math.round(h * rr(0.5, 0.68)); baseTop = h1;
-      body(w, d, 0, h1); plane(x, h1 + 0.02, z, w, d, MAT.roof); parapet(x, z, w, d, h1);
-      tw = w * rr(0.6, 0.75); td = d * rr(0.6, 0.75);
-      body(tw, td, h1, h);
-    } else body(w, d, 0, h);
-    plane(x, h + 0.02, z, tw, td, MAT.roof);
-    // cornice band at the roof line
-    sbox(x, h - 0.25, z, tw + 0.5, 0.5, td + 0.5, MAT.concrete, { collide: false });
-    if (near) {
-      const g = boxUV(w + 0.3, 4.4, d + 0.3, MAT.shop.userData.tu, MAT.shop.userData.tv);
-      addGeo(g, MAT.shop, x, 2.2, z);
-      sbox(x, 4.55, z, w + 1.0, 0.3, d + 1.0, MAT.concrete, { collide: false });
+    const shopBand = (cx, cz, bw, bd) => {
+      if (!near) return;
+      addGeo(boxUV(bw + 0.3, 4.4, bd + 0.3, MAT.shop.userData.tu, MAT.shop.userData.tv), MAT.shop, cx, 2.2, cz);
+      sbox(cx, 4.55, cz, bw + 1.0, 0.3, bd + 1.0, MAT.concrete, { collide: false });
+    };
+
+    // ----- round tower -----
+    if (opts.round) {
+      const r = Math.min(w, d) / 2;
+      const g = new THREE.CylinderGeometry(r, r, h, 18, 1, true);
+      const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (TAU * r) / tu, uv.getY(i) * h / tv);
+      addGeo(g, mat, x, h / 2, z); addCollider(x, h / 2, z, r * 1.8, h, r * 1.8);
+      const cap = new THREE.CircleGeometry(r, 18); cap.rotateX(-Math.PI / 2); addGeo(cap, MAT.roof, x, h + 0.02, z);
+      addGeo(new THREE.CylinderGeometry(r + 0.35, r + 0.35, 0.7, 18), MAT.concrete, x, h - 0.2, z);
+      if (near) {
+        const sg = new THREE.CylinderGeometry(r + 0.15, r + 0.15, 4.4, 18, 1, true);
+        const su = sg.attributes.uv; for (let i = 0; i < su.count; i++) su.setXY(i, su.getX(i) * (TAU * r) / MAT.shop.userData.tu, su.getY(i) * 4.4 / MAT.shop.userData.tv);
+        addGeo(sg, MAT.shop, x, 2.2, z);
+      }
+      const k = R();
+      if (k < 0.4) { cyl(x, h + 0.8, z, r * 0.8, r * 0.8, 1.6, MAT.concrete, 18, false); addGeo(new THREE.SphereGeometry(r * 0.8, 18, 10, 0, TAU, 0, Math.PI / 2), MAT.copper, x, h + 1.6, z); }
+      else if (k < 0.75) { const H = rr(14, 26); addGeo(new THREE.ConeGeometry(0.6, H, 6), MAT.metal, x, h + H / 2, z); }
+      footprints.push({ x, z, w: r * 2, d: r * 2, h });
+      return { tw: w, td: d, h };
     }
-    footprints.push({ x, z, w, d, h });
+
+    // ----- massing: plain box, stepped setback, 3-tier tower, or main block + lower wing -----
+    let bx = x, bz = z, bw = w, bd = d, tw = w, td = d, baseTop = h, wing = null, massing = 'plain';
+    if (!opts.noSetback && near && !opts.bare) {
+      const roll = R();
+      if (h > 42 && w > 18 && d > 18 && roll < 0.3) massing = 'setback';
+      else if (h > 50 && w > 22 && d > 22 && roll < 0.48) massing = 'tiered';
+      else if (w > 24 && d > 18 && dist > 45 && roll < 0.78) massing = 'wing';
+    }
+    if (massing === 'wing') {
+      const awayX = Math.abs(x) >= Math.abs(z), sgn = Math.sign(awayX ? x : z) || 1, frac = 0.38;
+      if (awayX) { const wW = w * frac, mW = w - wW; bw = mW; bx = x - sgn * (w / 2 - mW / 2); wing = { cx: x + sgn * (w / 2 - wW / 2), cz: z, w: wW, d: d * rr(0.75, 1) }; }
+      else { const wD = d * frac, mD = d - wD; bd = mD; bz = z - sgn * (d / 2 - mD / 2); wing = { cx: x, cz: z + sgn * (d / 2 - wD / 2), w: w * rr(0.75, 1), d: wD }; }
+      wing.h = Math.max(8, Math.round(h * rr(0.3, 0.6)));
+      tw = bw; td = bd;
+    }
+    if (massing === 'setback') {
+      const h1 = Math.round(h * rr(0.5, 0.68)); baseTop = h1;
+      volume(x, z, w, d, 0, h1); plane(x, h1 + 0.02, z, w, d, MAT.roof); parapet(x, z, w, d, h1);
+      tw = w * rr(0.6, 0.75); td = d * rr(0.6, 0.75);
+      volume(x, z, tw, td, h1, h);
+    } else if (massing === 'tiered') {
+      const y1 = Math.round(h * 0.5), y2 = Math.round(h * 0.78); baseTop = y1;
+      volume(x, z, w, d, 0, y1); plane(x, y1 + 0.02, z, w, d, MAT.roof); parapet(x, z, w, d, y1);
+      volume(x, z, w * 0.78, d * 0.78, y1, y2); plane(x, y2 + 0.02, z, w * 0.78, d * 0.78, MAT.roof); parapet(x, z, w * 0.78, d * 0.78, y2);
+      tw = w * 0.55; td = d * 0.55;
+      volume(x, z, tw, td, y2, h);
+    } else volume(bx, bz, bw, bd, 0, h);
+    plane(bx, h + 0.02, bz, tw, td, MAT.roof);
+    sbox(bx, h - 0.25, bz, tw + 0.5, 0.5, td + 0.5, MAT.concrete, { collide: false });   // cornice
+    shopBand(bx, bz, bw, bd);
+    footprints.push({ x: bx, z: bz, w: bw, d: bd, h });
+    if (wing) {
+      volume(wing.cx, wing.cz, wing.w, wing.d, 0, wing.h, mat); plane(wing.cx, wing.h + 0.02, wing.cz, wing.w, wing.d, MAT.roof);
+      parapet(wing.cx, wing.cz, wing.w, wing.d, wing.h); shopBand(wing.cx, wing.cz, wing.w, wing.d);
+      footprints.push({ x: wing.cx, z: wing.cz, w: wing.w, d: wing.d, h: wing.h });
+    }
     if (!near || opts.bare) return { tw, td, h };
-    if (dist > 55 && dist < 220 && baseTop >= 16 && windowCount < 40 && R() < 0.45) windowNest(x, z, w, d, baseTop, dist);
+
+    // window positions (up to two per building, so a wounded sniper can move inside the same building)
+    if (dist > 55 && dist < 220 && baseTop >= 16 && windowCount < 60 && R() < 0.55) {
+      const o1 = windowNest(bx, bz, bw, bd, baseTop, dist, bid);
+      if (o1 !== null && R() < 0.6) windowNest(bx, bz, bw, bd, baseTop, dist, bid, o1);
+    }
+    decorate(bx, bz, bw, bd, baseTop, mat, near);
+    if (wing) decorate(wing.cx, wing.cz, wing.w, wing.d, wing.h, mat, near, true);
 
     const spawnRoof = dist > 45 && dist < 240 && h >= 26 && h <= 84 && tw >= 11 && td >= 11;
-    parapet(x, z, tw, td, h, spawnRoof ? 1.0 : 0.55);
+    // low-rise houses get a tiled gable roof instead of a flat one
+    if (!spawnRoof && h < 26 && massing === 'plain' && R() < 0.6) { gableRoof(bx, bz, bw, bd, h); return { tw, td, h }; }
+    parapet(bx, bz, tw, td, h, spawnRoof ? 1.0 : 0.55);
     const occ = [];
     const obstacles = [];
     if (spawnRoof) {
-      const L = Math.hypot(x, z), dx = -x / L, dz = -z / L;
+      const L = Math.hypot(bx, bz) || 1, dx = -bx / L, dz = -bz / L;
       const hx = tw / 2 - 1.9, hz = td / 2 - 1.9;
       const tt = Math.min(Math.abs(dx) > 1e-3 ? hx / Math.abs(dx) : 1e9, Math.abs(dz) > 1e-3 ? hz / Math.abs(dz) : 1e9);
-      const n = { x: x + dx * tt, z: z + dz * tt, y: h, dx, dz, busy: false };
+      const n = { x: bx + dx * tt, z: bz + dz * tt, y: h, dx, dz, busy: false, bid };
       sandbagWall(n.x + dx * 0.95, h, n.z + dz * 0.95, Math.atan2(dx, dz));
       nests.push(n); occ.push({ x: n.x, z: n.z, r: 4.5 });
+      // a second firing position further along the same edge (a wounded sniper relocates here)
+      const tgx = -dz, tgz = dx, sgn2 = R() < 0.5 ? -1 : 1;
+      const room = Math.abs(dx) > Math.abs(dz) ? td / 2 - 3.4 : tw / 2 - 3.4;
+      let n2 = null;
+      if (room > 6) {
+        const s = sgn2 * Math.min(room - 0.5, rr(6, room));
+        const x2 = clampTo(n.x + tgx * s, bx, tw / 2 - 1.9), z2 = clampTo(n.z + tgz * s, bz, td / 2 - 1.9);
+        if (Math.hypot(x2 - n.x, z2 - n.z) > 5.5) {
+          n2 = { x: x2, z: z2, y: h, dx, dz, busy: false, bid };
+          sandbagWall(x2 + dx * 0.95, h, z2 + dz * 0.95, Math.atan2(dx, dz)); occ.push({ x: x2, z: z2, r: 4 });
+        }
+      }
       // extra cover on the roof for multiplayer
-      const ex = x + rr(-tw / 4, tw / 4), ez = z + rr(-td / 4, td / 4);
-      if (Math.hypot(ex - n.x, ez - n.z) > 6) { sandbagWall(ex, h, ez, R() < 0.5 ? 0 : Math.PI / 2, 2.6, 4); occ.push({ x: ex, z: ez, r: 2 }); obstacles.push({ x: ex, z: ez, hw: 1.5, hd: 1.5 }); }
-      const roofRec = { x, z, y: h, hw: tw / 2 - 1.1, hd: td / 2 - 1.1, side: x < 0 ? 'A' : 'B', obstacles, face: Math.atan2(-dx, -dz) };
+      const ex = bx + rr(-tw / 4, tw / 4), ez = bz + rr(-td / 4, td / 4);
+      if (Math.hypot(ex - n.x, ez - n.z) > 6 && (!n2 || Math.hypot(ex - n2.x, ez - n2.z) > 6)) { sandbagWall(ex, h, ez, R() < 0.5 ? 0 : Math.PI / 2, 2.6, 4); occ.push({ x: ex, z: ez, r: 2 }); obstacles.push({ x: ex, z: ez, hw: 1.5, hd: 1.5 }); }
+      const roofRec = { x: bx, z: bz, y: h, hw: tw / 2 - 1.1, hd: td / 2 - 1.1, side: x < 0 ? 'A' : 'B', obstacles, face: Math.atan2(-dx, -dz) };
       spawns.push(roofRec);
       n.roof = roofRec; // AI uses the roof to walk into its nest
-    }
+      if (n2) { n2.roof = roofRec; nests.push(n2); }
+    } else crown(bx, bz, tw, td, h, dist, occ);
     const spot = r => {
       for (let k = 0; k < 12; k++) {
-        const px = x + rr(-tw / 2 + r + 0.8, tw / 2 - r - 0.8), pz = z + rr(-td / 2 + r + 0.8, td / 2 - r - 0.8);
+        const px = bx + rr(-tw / 2 + r + 0.8, tw / 2 - r - 0.8), pz = bz + rr(-td / 2 + r + 0.8, td / 2 - r - 0.8);
         if (occ.every(o => Math.hypot(o.x - px, o.z - pz) > o.r + r)) { occ.push({ x: px, z: pz, r }); return [px, pz]; }
       }
       return null;
@@ -212,6 +371,30 @@ export function buildWorld(seed) {
     for (let i = 0; i < nAC; i++) { const s = spot(1.4); if (s) { const ry = R() < 0.5 ? 0 : Math.PI / 2; acUnit(s[0], h, s[1], ry); obstacles.push({ x: s[0], z: s[1], hw: 1.2, hd: 1.2 }); } }
     if (R() < 0.25) { const s = spot(1); if (s) antenna(s[0], h, s[1]); }
     return { tw, td, h };
+  }
+  const clampTo = (v, c, half) => Math.max(c - half, Math.min(c + half, v));
+
+  // ---------- plaza (fountain square) and park ----------
+  function plaza(cx, cz) {
+    sbox(cx, 0.24, cz, BS - 4, 0.12, BS - 4, MAT.sidewalk, { collide: false });
+    cyl(cx, 0.6, cz, 5.4, 5.8, 0.9, MAT.concrete, 28);                                    // basin wall
+    addGeo(new THREE.CylinderGeometry(4.7, 4.7, 0.14, 28), MAT.water, cx, 1.02, cz);       // water
+    cyl(cx, 2.4, cz, 0.45, 0.8, 3.4, MAT.concrete, 12, false);                              // column
+    addGeo(new THREE.SphereGeometry(1.3, 14, 10), MAT.copper, cx, 4.5, cz);
+    for (let k = 0; k < 8; k++) {                                                            // benches around the fountain
+      const a = k / 8 * TAU, bxp = cx + Math.cos(a) * 9, bzp = cz + Math.sin(a) * 9;
+      sbox(bxp, 0.55, bzp, 2.4, 0.4, 0.7, MAT.wood, { ry: -a + Math.PI / 2 });
+    }
+    for (let k = 0; k < 18; k++) { const a = k / 18 * TAU + 0.2; treeSpots.push([cx + Math.cos(a) * rr(13.5, 16.5), 0.3, cz + Math.sin(a) * rr(13.5, 16.5)]); }
+    const kx = cx + rr(-14, 14), kz = cz + (R() < 0.5 ? -16 : 16);                           // kiosk with awning
+    sbox(kx, 1.4, kz, 3, 2.8, 2.4, MAT.concrete);
+    const ag = new THREE.BoxGeometry(4.2, 0.1, 1.8); ag.rotateX(0.2); ag.translate(0, 0, 0.9);
+    addGeo(ag, pick(MAT.awnings), kx, 2.9, kz + (kz > cz ? -1.2 : 1.2), kz > cz ? Math.PI : 0);
+  }
+  function park(cx, cz) {
+    sbox(cx, 0.22, cz, BS - 5, 0.1, BS - 5, MAT.grass, { collide: false });
+    for (let k = 0; k < 24; k++) treeSpots.push([cx + rr(-16, 16), 0.27, cz + rr(-16, 16)]);
+    for (let k = 0; k < 4; k++) sbox(cx + rr(-12, 12), 0.55, cz + rr(-12, 12), 2.2, 0.4, 0.7, MAT.wood, { ry: rr(0, TAU) });
   }
 
   // ---------- the player's tower (solo mode) ----------
@@ -250,11 +433,8 @@ export function buildWorld(seed) {
     sbox(cx, 0.09, cz, BS, 0.18, BS, MAT.sidewalk, { collide: false });
     sbox(cx, 0.09, cz, BS + 0.3, 0.16, BS + 0.3, MAT.concrete, { collide: false }); // curb
     if (i === 0 && j === 0) { playerTower(); continue; }
-    if (dist > 60 && dist < 340 && R() < 0.11) {
-      sbox(cx, 0.22, cz, BS - 5, 0.1, BS - 5, MAT.grass, { collide: false });
-      for (let k = 0; k < 24; k++) treeSpots.push([cx + rr(-16, 16), 0.27, cz + rr(-16, 16)]);
-      continue;
-    }
+    const openP = story ? (dist < 170 ? 0.34 : 0.14) : 0.11;
+    if (dist > 60 && dist < 340 && R() < openP) { if (R() < 0.45) plaza(cx, cz); else park(cx, cz); continue; }
     const S = BS - 6, r = R();
     let lots;
     if (r < 0.35) lots = [[cx, cz, S, S]];
@@ -262,8 +442,9 @@ export function buildWorld(seed) {
     else lots = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => [cx + a * S / 4, cz + b * S / 4, S / 2 - 1.5, S / 2 - 1.5]);
     for (const [lx, lz, lw, ld] of lots) {
       const dd = Math.hypot(lx, lz);
-      const h = dd < 260 ? rr(16, 76) : rr(22, 140);
-      building(lx, lz, lw * rr(0.88, 1), ld * rr(0.88, 1), Math.round(h), dd);
+      const h = story && dd < 175 ? (R() < 0.8 ? rr(7, 21) : rr(21, 38)) : dd < 260 ? rr(16, 76) : rr(22, 140);
+      const round = lots.length === 1 && dd > 40 && R() < 0.18;
+      building(lx, lz, lw * rr(0.88, 1), ld * rr(0.88, 1), Math.round(h), dd, { round });
     }
     if (dist < 330) {
       for (let k = -BS / 2 + 4; k <= BS / 2 - 4; k += 9) {
@@ -275,7 +456,7 @@ export function buildWorld(seed) {
   // far skyline ring
   for (let i = 0; i < 70; i++) {
     const a = R() * TAU, r = rr(LIMIT + 60, LIMIT + 420);
-    building(Math.cos(a) * r, Math.sin(a) * r, rr(26, 60), rr(26, 60), Math.round(rr(40, 170)), r);
+    building(Math.cos(a) * r, Math.sin(a) * r, rr(26, 60), rr(26, 60), Math.round(rr(40, 170)), r, { round: R() < 0.3 });
   }
   // streets: lane dashes, crosswalks, parked cars
   for (let s = -N - 1; s <= N; s++) {

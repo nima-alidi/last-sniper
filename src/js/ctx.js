@@ -8,6 +8,9 @@ export const G = {
   hittables: [],       // meshes that bullets can damage (enemies / remote players)
   onBulletHit: null,   // (hitObjectUserData, part, dist, point, dir) => void, set by the active mode
   onPlayerShot: null,  // (from, to) => void
+  timeScale: 1,        // < 1 during the slow-motion bullet camera
+  realDt: 0.016,       // unscaled frame time
+  onFire: null,        // (bullet) => void; story mode uses it to trigger the bullet camera
 };
 
 const DEFAULTS = {

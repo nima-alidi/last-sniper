@@ -53,7 +53,7 @@ const compassName = rad => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.rou
 // ---------- spawning ----------
 // Can the enemy's head at this nest be seen from somewhere along the tower edge facing it?
 // (cached per nest; buildings in between, parapets and roof clutter are all taken into account)
-function visibleFromTower(n) {
+export function visibleFromTower(n) {
   if (n.towerLOS !== undefined) return n.towerLOS;
   const t = G.world.spawns.find(s => s.tower);
   const eyeY = t.y + 1.65, L = Math.hypot(n.x - t.x, n.z - t.z) || 1;
@@ -138,20 +138,26 @@ function onHit(e, part, dist) {
   }
 }
 
-// move a wounded enemy to another visible nest
+// A wounded enemy only changes position inside his own building: another firing spot on the same roof,
+// or a window of the same building. If there is none he just keeps his head down.
+export function siblingNest(old, visible) {
+  const list = G.world.nests.filter(n => n.bid === old.bid && n !== old && !n.busy && visible(n));
+  return list.length ? list[Math.floor(Math.random() * list.length)] : null;
+}
 function relocate(e) {
   const old = e.nest;
-  const nest = pickNest();
-  old.busy = false;
-  if (!nest) { e.nest = old; old.busy = true; e.state = 'cover'; e.t = 3; return; }
-  nest.busy = true; e.nest = nest;
-  const r = nest.roof;
-  e.x = r ? clamp(r.x + (r.x - nest.x) * 0.7, r.x - r.hw + 0.6, r.x + r.hw - 0.6) : nest.x;
-  e.z = r ? clamp(r.z + (r.z - nest.z) * 0.7, r.z - r.hd + 0.6, r.z + r.hd - 0.6) : nest.z;
+  const nest = siblingNest(old, visibleFromTower);
+  if (!nest) { e.state = 'cover'; e.t = rnd(4, 6.5); hud.message('WOUNDED — HE IS KEEPING HIS HEAD DOWN', 2.5); return; }
+  old.busy = false; nest.busy = true; e.nest = nest;
   e.dist = Math.hypot(nest.x - G.player.x, nest.z - G.player.z);
-  e.state = 'incoming'; e.t = 3; e.s.root.visible = false;
-  sfx.warn();
-  hud.message(`WOUNDED ENEMY RELOCATED — ${Math.round(e.dist)} m ${compassName(heading(nest.x, nest.z))}`, 3);
+  if (old.roof && nest.roof) {            // both on the same roof: he limps across it, in plain view
+    e.state = 'walk'; e.s.root.visible = true;
+    hud.message('WOUNDED — MOVING TO ANOTHER FIRING POSITION', 2.5);
+  } else {                                // roof <-> window: he slips inside / outside, unseen for a moment
+    e.x = nest.x; e.z = nest.z; e.state = 'incoming'; e.t = 3; e.s.root.visible = false;
+    sfx.warn();
+    hud.message(`WOUNDED ENEMY MOVED — ${Math.round(e.dist)} m ${compassName(heading(nest.x, nest.z))}${nest.window ? ' · IN A WINDOW' : ' · ROOFTOP'}`, 3);
+  }
 }
 
 // ---------- per frame ----------

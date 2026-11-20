@@ -62,7 +62,23 @@ function sample(name, { gain = 1, pan = 0, delay = 0, rate = 1, lowpass = 0 } = 
 }
 const pickOf = names => names[Math.floor(Math.random() * names.length)];
 
+// a synthesised scream (two formants + vibrato) for the panicking crowd
+function scream(delay, f0) {
+  const a = audio(); if (!a) return;
+  const t = a.currentTime + delay, dur = 0.9 + Math.random() * 0.7;
+  const o = a.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f0 * 1.7, t + dur * 0.35); o.frequency.linearRampToValueAtTime(f0 * 1.15, t + dur);
+  const lfo = a.createOscillator(); lfo.frequency.value = 6 + Math.random() * 3;
+  const lg = a.createGain(); lg.gain.value = f0 * 0.04; lfo.connect(lg); lg.connect(o.frequency);
+  const f1 = a.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 900; f1.Q.value = 5;
+  const f2 = a.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 2300; f2.Q.value = 6;
+  const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.1, t + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g); g.connect(out((Math.random() * 2 - 1) * 0.8));
+  o.start(t); lfo.start(t); o.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+}
+
 export const sfx = {
+  panic() { for (let i = 0; i < 7; i++) scream(i * 0.1 + Math.random() * 0.3, 360 + Math.random() * 460); },
   shot() {
     const ok = sample(pickOf(['rifle_shot_1', 'rifle_shot_2', 'rifle_shot_3']), { gain: 1.0, rate: 0.96 + Math.random() * 0.08 });
     tone(80, 0.35, ok ? 0.45 : 0.8, 0, 'sine', -50); // sub thump for weight

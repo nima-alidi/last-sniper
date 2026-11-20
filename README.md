@@ -6,6 +6,7 @@ First-person sniper game (Three.js + Electron) with a solo mode against AI and L
 Windows SmartScreen may warn that the publisher is unknown (the installer is not code-signed): choose *More info → Run anyway*.
 
 ## Modes
+- **Story** – five assassination contracts. Each opens with a **dossier**: a photo of the target, his description and what to look for. The city is crowded; a minimap circle shows roughly where he is. Find him among the pedestrians (a few decoys wear the same colour), shoot him — and the whole crowd panics while his bodyguards, on the street and on the rooftops, fire back **one at a time**. Kill them all (or survive 2½ minutes) to finish. Shooting a civilian costs points; three civilian casualties fail the contract. A slow-motion **bullet camera** follows your shot on the target. Bonus objectives (headshot, no civilian casualties, fast kill, no damage) earn up to three stars; progress unlocks the next contract.
 - **Solo** – hold the central tower against enemy snipers, one at a time. Each new enemy is first reported on the minimap (bottom-left, orange "!"), then walks onto his rooftop or appears in a window and takes cover. When he stands up to aim at you, red arrows on screen and a red dot on the minimap show his direction; there is no laser or scope glint, you have to find him. The muzzle flash of his shot gives his position away. A body hit wounds him: he bleeds and, the first time, relocates to a new position. The next enemy comes after the current one is killed, a little farther away each time.
 - **Team Deathmatch** – Blue (west rooftops) vs Red (east rooftops).
 - **Free For All** – everyone for themselves.
@@ -53,6 +54,7 @@ npm run dev          # test in a browser at http://localhost:5173/src/index.html
 
 ## Credits
 - Textures and sky HDRI from [Poly Haven](https://polyhaven.com) (CC0).
+- Pedestrian / target characters by [Quaternius](https://quaternius.com) (CC0), via [poly.pizza](https://poly.pizza).
 - Gun recordings (Mosin-Nagant, SKS) from "Gunshot Sounds" on [OpenGameArt](https://opengameart.org/content/gunshot-sounds) (CC0), cut by `tools/slice-sounds.js`.
 - Soldier character: "Soldier.glb" from the [three.js](https://github.com/mrdoob/three.js) examples (a Mixamo character). Mixamo characters may be used inside games but not redistributed as standalone assets, so the file is downloaded by `npm run assets` and is not part of this repository.
 - Built with [three.js](https://threejs.org), [Electron](https://www.electronjs.org) and [ws](https://github.com/websockets/ws).

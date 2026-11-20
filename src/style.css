@@ -140,4 +140,41 @@ table.board td.A{border-left:3px solid var(--teamA)} table.board td.B{border-lef
 #chat-hud-in{left:28px;bottom:252px;width:420px;pointer-events:auto;font:inherit;font-size:14px;background:rgba(0,0,0,.6);color:#fff;border:1px solid var(--accent);padding:6px 8px;outline:none}
 #scoreboard{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;width:760px;background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--accent);padding:18px 22px}
 #scoreboard h3{margin:0 0 8px;letter-spacing:.25em;font-size:16px;display:flex;justify-content:space-between}
+/* ---------- story mode ---------- */
+#target-card{top:78px;left:22px;display:flex;gap:10px;align-items:center;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);padding:6px 12px 6px 6px}
+#target-card img{width:58px;height:70px;object-fit:cover;border:2px solid #d9cfb4;filter:contrast(1.05)}
+#target-card small{display:block;font-size:10px;letter-spacing:.3em;color:var(--accent2)}
+#target-card b{display:block;font-size:17px;letter-spacing:.08em}
+#target-card .tab-hint{color:var(--dim);letter-spacing:.1em;margin-top:2px}
+#objective{top:156px;left:22px;font-size:14px;letter-spacing:.18em;color:var(--accent2);background:rgba(0,0,0,.4);padding:5px 12px;border-left:3px solid var(--accent)}
+#civ-count{top:190px;left:22px;font-size:12px;letter-spacing:.2em;color:#cfd6df}
+#civ-count.warn{color:var(--red)}
+#contracts{display:flex;flex-direction:column;gap:8px}
+.contract{display:flex;align-items:center;gap:14px;padding:12px 16px;border:1px solid var(--line);background:rgba(0,0,0,.25);cursor:pointer}
+.contract:hover{border-color:var(--accent);background:rgba(232,177,74,.08)}
+.contract.locked{opacity:.4;cursor:not-allowed}
+.contract .no{font-size:30px;font-weight:700;width:40px;color:var(--accent2)}
+.contract .tt{flex:1}.contract .tt b{display:block;font-size:19px;letter-spacing:.14em}.contract .tt small{color:var(--dim);letter-spacing:.06em}
+.contract .st{font-size:22px;letter-spacing:.1em;color:var(--accent2)}
+.folder{position:relative;width:min(900px,94vw);max-height:92vh;overflow:auto;background:#d6c9a4;background-image:linear-gradient(180deg,rgba(255,255,255,.18),rgba(0,0,0,.08));color:#2a2418;
+  padding:26px 34px 22px;border-radius:4px;box-shadow:0 20px 60px rgba(0,0,0,.7),inset 0 0 0 2px rgba(0,0,0,.15);font-family:"Courier New",Consolas,monospace;letter-spacing:.02em}
+#dossier{align-items:center;justify-content:center;background:rgba(4,6,9,.78);backdrop-filter:blur(3px)}
+.stamp{position:absolute;right:30px;top:18px;border:4px solid #a4261c;color:#a4261c;font-weight:700;font-size:26px;padding:2px 14px;transform:rotate(7deg);opacity:.8;letter-spacing:.2em}
+.folder-head{display:flex;flex-direction:column;gap:4px;border-bottom:2px solid #2a2418;padding-bottom:10px;margin-bottom:14px}
+.folder-head span:first-child{font-size:12px;letter-spacing:.3em}.folder-head span:last-child{font-size:34px;font-weight:700;letter-spacing:.1em}
+.folder-body{display:flex;gap:26px}
+.photo{position:relative;flex:0 0 auto;background:#f1ece0;padding:10px 10px 8px;box-shadow:0 4px 14px rgba(0,0,0,.4);transform:rotate(-2deg)}
+.photo img{display:block;width:230px;height:276px;object-fit:cover}
+.photo .caption{text-align:center;font-size:14px;margin-top:6px;letter-spacing:.2em}
+.clip{position:absolute;top:-14px;left:50%;width:26px;height:44px;border:3px solid #8a8f96;border-radius:12px;transform:translateX(-50%)}
+.facts{flex:1;display:flex;flex-direction:column;gap:7px}
+.row-f{display:flex;gap:12px;border-bottom:1px dashed rgba(0,0,0,.3);padding-bottom:5px;font-size:15px}
+.row-f b{flex:0 0 140px;font-size:12px;letter-spacing:.2em;padding-top:2px}
+.intro{margin:16px 0 8px;font-size:14px;line-height:1.6;font-style:italic}
+.objs{font-size:14px}.objs ul{margin:6px 0 0;padding-left:20px;line-height:1.7}
+.folder .actions{margin-top:14px}
+.folder .btn.ghost{color:#2a2418;border-color:#2a2418}
+.end-bonus{display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.06);font-size:15px}
+.end-bonus.done{color:var(--green)}
+.stars{text-align:center;font-size:44px;letter-spacing:.2em;color:var(--accent2)}
 @keyframes fadein{from{opacity:0;transform:translateY(-4px)}to{opacity:1}}

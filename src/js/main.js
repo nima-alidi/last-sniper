@@ -8,6 +8,9 @@ import { Player } from './player.js';
 import * as hud from './hud.js';
 import { audio, sfx, startWind, setVolume, loadSamples } from './audio.js';
 import { loadCharacters } from './soldier.js';
+import { loadPeople } from './people.js';
+import { CONTRACTS, loadProgress } from './missions.js';
+import { prepareStory, beginStory, stopStory, updateStory, storyPhase, storyActive, storyCompass, storyMinimap, storyIndicators, storyScoreboard, storyKills } from './story.js';
 import { startSolo, stopSolo, updateSolo, soloIndicators, soloCompass, soloScoreboard, soloMinimap, summary } from './solo.js';
 import { net, connect, disconnect, updateNet, sendHit, sendShot, sendFall, admin, chat, compassMarkers, scoreboardHtml, minimapMarkers } from './net.js';
 
@@ -22,12 +25,13 @@ function setLoad(p, text) { $('load-fill').style.width = (p * 100).toFixed(0) + 
 // yield so the loading screen can repaint (setTimeout keeps working even if the window is hidden/occluded)
 const frame = () => new Promise(r => setTimeout(r, 30));
 
-function ensureWorld(seed) {
-  if (currentSeed === seed && G.world) return;
+function ensureWorld(seed, story = false) {
+  const key = seed + (story ? 's' : '');
+  if (currentSeed === key && G.world) return;
   if (G.world) { G.world.dispose(); clearAmbient(); }
-  G.world = buildWorld(seed);
+  G.world = buildWorld(seed, { story });
   setupAmbient(G.world.ambient);
-  currentSeed = seed;
+  currentSeed = key;
   renderer.compile(scene, camera);
 }
 
@@ -36,7 +40,7 @@ async function boot() {
   setLoad(0.02, 'LOADING TEXTURES');
   await loadAssets(p => setLoad(0.05 + p * 0.6, 'LOADING TEXTURES'));
   setLoad(0.66, 'LOADING CHARACTERS & AUDIO');
-  await Promise.all([loadCharacters(), loadSamples()]);
+  await Promise.all([loadCharacters(), loadSamples(), loadPeople()]);
   setLoad(0.7, 'LOADING SKY');
   try { await loadSky('../assets/hdri/sky.hdr'); } catch (e) { console.warn('sky failed', e); useFallbackSky(); }
   setLoad(0.85, 'BUILDING CITY'); await frame();
@@ -51,20 +55,26 @@ async function boot() {
 // ================= game loop =================
 let last = performance.now(), fpsN = 0, fpsT = 0, menuT = 0;
 function loop(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const realDt = Math.min(0.05, (now - last) / 1000); last = now;
+  G.realDt = realDt;
+  const dt = realDt * (G.timeScale || 1);               // slow motion during the bullet camera
   G.time += dt;
   const p = G.player;
-  const inGame = !!G.mode;
+  const briefing = G.mode === 'story' && storyPhase() === 'brief';
+  const inGame = !!G.mode && !briefing;
+  if (briefing) updateStory(dt);                         // the crowd keeps walking behind the dossier
   if (inGame) {
-    if (!(G.mode === 'solo' && G.state === 'paused')) {
+    if (!((G.mode === 'solo' || G.mode === 'story') && G.state === 'paused')) {
       if (p.roof) p.update(dt);
       if (G.mode === 'solo' && (G.state === 'play' || G.state === 'dead')) updateSolo(dt);
+      if (G.mode === 'story' && (G.state === 'play' || G.state === 'dead')) updateStory(dt);
     }
     if (G.mode === 'mp') { updateNet(dt); updateMpHud(dt); }
     if (G.mode === 'solo') hud.kills(summary().kills);
+    else if (G.mode === 'story') hud.kills(storyKills());
     else { const me = net.lobby && net.lobby.players.find(q => q.id === net.id); hud.kills(me ? me.kills : 0); }
-    hud.compass(p.yaw, G.mode === 'solo' ? soloCompass() : compassMarkers());
-    if (p.roof) hud.drawMinimap({ x: p.x, z: p.z, yaw: p.yaw, t: G.time, footprints: G.world.footprints, markers: G.mode === 'solo' ? soloMinimap() : minimapMarkers() });
+    hud.compass(p.yaw, G.mode === 'solo' ? soloCompass() : G.mode === 'story' ? storyCompass() : compassMarkers());
+    if (p.roof) hud.drawMinimap({ x: p.x, z: p.z, yaw: p.yaw, t: G.time, footprints: G.world.footprints, markers: G.mode === 'solo' ? soloMinimap() : G.mode === 'story' ? storyMinimap() : minimapMarkers() });
     // click-to-enter hint when pointer is not locked
     if (G.state === 'play' && !p.locked && !document.querySelector('.screen.show')) hud.message('CLICK TO DEPLOY', 0.2);
   } else {
@@ -76,12 +86,12 @@ function loop(now) {
     p && p.weapon.setVisible(false);
   }
   updateEffects(dt, G.time, camera.position, p && p.scope > 0.5);
-  render(dt);
+  render(realDt);
   let os = null;
-  if (inGame && p.roof && G.state !== 'ended') { os = p.overlayState(G.time); os.aimIndicators = G.mode === 'solo' ? soloIndicators() : []; }
-  hud.drawOverlay(dt, os);
-  hud.tickDom(dt);
-  fpsN++; fpsT += dt; if (fpsT >= 0.5) { hud.fps(Math.round(fpsN / fpsT)); fpsN = 0; fpsT = 0; }
+  if (inGame && p.roof && G.state !== 'ended') { os = p.overlayState(G.time); os.aimIndicators = G.mode === 'solo' ? soloIndicators() : G.mode === 'story' ? storyIndicators() : []; }
+  hud.drawOverlay(realDt, os);
+  hud.tickDom(realDt);
+  fpsN++; fpsT += realDt; if (fpsT >= 0.5) { hud.fps(Math.round(fpsN / fpsT)); fpsN = 0; fpsT = 0; }
   requestAnimationFrame(loop);
 }
 
@@ -103,7 +113,7 @@ addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   if (e.code === 'Tab' && G.mode) {
     e.preventDefault();
-    hud.scoreboard(G.mode === 'solo' ? soloScoreboard() : scoreboardHtml());
+    hud.scoreboard(G.mode === 'solo' ? soloScoreboard() : G.mode === 'story' ? storyScoreboard() : scoreboardHtml());
   }
   if (e.code === 'Enter' && G.mode === 'mp' && G.state !== 'menu') {
     const inp = $('chat-hud-in'); inp.classList.remove('hidden'); inp.value = ''; inp.focus();
@@ -125,7 +135,7 @@ function enterGame() {
   G.player.lock();
 }
 function leaveToMenu(note) {
-  stopSolo();
+  stopSolo(); stopStory();
   if (net.connected || net.ws) disconnect();
   if (hosting && isApp) window.native.hostStop();
   hosting = null;
@@ -155,6 +165,60 @@ function startSoloGame() {
   G.player.enabled = true;
   enterGame();
 }
+
+// ---------- story ----------
+let lastStory = null;
+const stars = n => '★'.repeat(n) + '☆'.repeat(3 - n);
+function buildContractList() {
+  const prog = loadProgress(), box = $('contracts'); box.innerHTML = '';
+  CONTRACTS.forEach((c, i) => {
+    const locked = i >= prog.unlocked, st = prog.stars[i] || 0;
+    const d = document.createElement('div'); d.className = 'contract' + (locked ? ' locked' : '');
+    d.innerHTML = `<div class="no">${i + 1}</div><div class="tt"><b>${c.title}</b><small>${locked ? 'LOCKED — complete the previous contract' : `Target: ${c.name} · ${c.role} · ${c.guards} guards + ${c.snipers} rooftop shooter${c.snipers > 1 ? 's' : ''}`}</small></div><div class="st">${locked ? '🔒' : stars(st)}</div>`;
+    if (!locked) d.onclick = () => openContract(i);
+    box.appendChild(d);
+  });
+}
+async function openContract(idx) {
+  audio();
+  stopSolo(); stopStory();
+  screen('loading'); setLoad(0.25, 'BUILDING THE CITY'); await frame();
+  ensureWorld(CONTRACTS[idx].seed, true);
+  G.mode = 'story'; G.state = 'brief'; G.player.enabled = false; hud.show(false);
+  G.player.reset(); G.player.roof = G.world.spawns.find(s => s.tower);
+  setLoad(0.6, 'PLACING THE CROWD'); await frame();
+  let brief;
+  try { brief = prepareStory(idx); } catch (e) { console.error(e); leaveToMenu('COULD NOT PREPARE THE CONTRACT'); return; }
+  setLoad(1, 'READY'); await frame();
+  showDossier(brief);
+}
+function showDossier(b) {
+  const c = b.c;
+  $('ds-code').textContent = `CONTRACT ${c.id} · CODENAME: ${c.codename}`; $('ds-title').textContent = c.title;
+  $('ds-photo').src = b.photo; $('ds-name').textContent = c.name.toUpperCase();
+  $('ds-fullname').textContent = c.name; $('ds-agesex').textContent = `${c.age} / ${b.gender}`; $('ds-role').textContent = c.role;
+  $('ds-build').textContent = b.build; $('ds-clothes').textContent = b.clothes.join(', ');
+  $('ds-seen').textContent = b.lastSeen; $('ds-sec').textContent = b.security; $('ds-intro').textContent = c.intro;
+  $('ds-objs').innerHTML = `<li><b>PRIMARY:</b> eliminate ${c.name}. Max. 3 civilian casualties.</li>` + b.bonuses.map(x => `<li>BONUS: ${x.label}</li>`).join('');
+  screen('dossier');
+}
+$('ds-back').onclick = () => { stopStory(); G.mode = null; G.state = 'menu'; ensureWorld(SOLO_SEED); G.player.roof = G.world.spawns.find(s => s.tower); buildContractList(); screen('story-menu'); };
+$('ds-go').onclick = () => {
+  G.state = 'play'; G.player.enabled = true;
+  beginStory(res => {
+    lastStory = res; G.state = 'ended'; if (document.pointerLockElement) document.exitPointerLock();
+    hud.death(false); hud.show(false);
+    $('end-title').textContent = res.success ? 'CONTRACT COMPLETE' : 'CONTRACT FAILED'; $('end-title').className = res.success ? 'win' : 'lose';
+    $('end-sub').textContent = res.success ? `${res.title} — ${res.name.toUpperCase()}${res.reason ? ' · ' + res.reason : ''}` : res.reason;
+    $('end-board').innerHTML = `${res.success ? `<div class="stars">${stars(res.stars)}</div>` : ''}
+      ${res.bonuses.map(b => `<div class="end-bonus ${b.done ? 'done' : ''}"><span>${b.done ? '✔' : '✖'} ${b.label}</span><span>${b.done ? '+500' : ''}</span></div>`).join('')}
+      <table class="board"><tr><th>SCORE</th><th>TIME</th><th>HOSTILES DOWN</th><th>CIVILIAN CASUALTIES</th>${res.targetDist ? '<th>TARGET SHOT</th>' : ''}</tr>
+      <tr class="me"><td>${res.score}</td><td>${Math.floor(res.time / 60)}:${String(Math.floor(res.time % 60)).padStart(2, '0')}</td><td>${res.kills}</td><td>${res.civKills} / 3</td>${res.targetDist ? `<td>${res.targetDist} m</td>` : ''}</tr></table>`;
+    $('end-again').textContent = res.success && res.idx < CONTRACTS.length - 1 ? 'NEXT CONTRACT' : 'RETRY';
+    screen('endscreen');
+  });
+  enterGame();
+};
 
 // ---------- multiplayer ----------
 G.onBulletHit = null;
@@ -307,6 +371,7 @@ document.querySelector('.menu-list').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   audio();
   const go = b.dataset.go;
+  if (go === 'story') { buildContractList(); screen('story-menu'); }
   if (go === 'solo') startSoloGame();
   if (go === 'host') { $('host-name').value = settings.name; screen('host'); }
   if (go === 'join') { $('join-name').value = settings.name; $('join-ip').value = settings.lastIp; $('join-port').value = settings.port; screen('join'); }
@@ -337,11 +402,12 @@ $('p-leave').onclick = () => leaveToMenu();
 $('p-admin-end').onclick = () => { admin('end'); resume(); };
 $('end-menu').onclick = () => leaveToMenu();
 $('end-again').onclick = () => {
-  if (G.mode === 'solo') { screen(null); startSoloGame(); }
+  if (G.mode === 'story') { const next = lastStory && lastStory.success && lastStory.idx < CONTRACTS.length - 1 ? lastStory.idx + 1 : (lastStory ? lastStory.idx : 0); openContract(next); }
+  else if (G.mode === 'solo') { screen(null); startSoloGame(); }
   else if (net.connected) { G.mode = null; G.state = 'menu'; hud.show(false); G.player.enabled = false; screen('lobby'); }
   else leaveToMenu();
 };
 
 // debug handle for automated testing
-window.__rs = { G, net, settings, camera, startSoloGame };
+window.__rs = { G, net, settings, camera, startSoloGame, openContract };
 boot().catch(err => { console.error(err); setLoad(1, 'ERROR: ' + err.message); });

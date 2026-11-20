@@ -206,5 +206,32 @@ function buildMaterials() {
     m.metalness = 0.6; m.envMapIntensity = 1.3;
     return m;
   });
+  // ----- extra materials for building variety -----
+  MAT.awnings = [0xb8322a, 0x2a6fc9, 0xd79a22, 0x2f8a4e, 0x7d3fa0, 0xe9e3d2, 0xc4572b].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, side: THREE.DoubleSide }));
+  MAT.copper = new THREE.MeshStandardMaterial({ color: 0x5aa08a, roughness: 0.45, metalness: 0.55 });
+  MAT.water = new THREE.MeshStandardMaterial({ color: 0x3c8fb0, roughness: 0.04, metalness: 0.25, envMapIntensity: 1.6 });
+  MAT.tiles = new THREE.MeshStandardMaterial({
+    map: proceduralTex(256, (g, s) => {
+      g.fillStyle = '#9a4a32'; g.fillRect(0, 0, s, s);
+      for (let y = 0; y < s; y += 16) for (let x = (y / 16 % 2) * 8; x < s + 16; x += 16) {
+        const v = (Math.random() * 40 - 20) | 0;
+        g.fillStyle = `rgb(${160 + v},${78 + v * 0.6 | 0},${52 + v * 0.5 | 0})`; g.fillRect(x + 1, y + 1, 14, 14);
+        g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x, y + 14, 16, 2);
+      }
+    }), roughness: 0.85, side: THREE.DoubleSide,
+  });
+  MAT.tiles.userData.tile = 3;
+  const neon = (text, bg, fg) => {
+    const [c, g] = canvas(512, 256);
+    g.fillStyle = bg; g.fillRect(0, 0, 512, 256);
+    g.strokeStyle = fg; g.lineWidth = 10; g.strokeRect(12, 12, 488, 232);
+    g.font = 'bold 118px Bahnschrift, "Arial Black", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.shadowColor = fg; g.shadowBlur = 26; g.fillStyle = '#ffffff'; g.fillText(text, 256, 134);
+    const t = canvasTex(c, true);
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    return new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 1.15, roughness: 0.6 });
+  };
+  MAT.signs = [['HOTEL', '#1b0f2e', '#ff4fd8'], ['CAFE', '#2a1608', '#ffb347'], ['CINEMA', '#101c33', '#4fd0ff'], ['BANK', '#0f2a1a', '#5cff9a'],
+    ['PIZZA', '#2e0f0f', '#ff6b4f'], ['METRO', '#0f1a2e', '#7fa8ff'], ['PLAZA', '#2e2a0f', '#ffe14f'], ['GRAND', '#1a0f2e', '#c08aff']].map(a => neon(...a));
   MAT.shop = shopfront();
 }

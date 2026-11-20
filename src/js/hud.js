@@ -46,6 +46,14 @@ export function ammo(mag, res, state, magSize = 5) {
   $('ammo-rounds').innerHTML = Array.from({ length: magSize }, (_, i) => `<i class="${i < mag ? '' : 'spent'}"></i>`).join('');
   $('mag-count').innerHTML = `MAGAZINES <b>×${Math.ceil(res / magSize)}</b>`;
 }
+// story mode widgets
+export function storyCard(photo, name) {
+  const c = $('target-card');
+  if (!photo) { c.classList.add('hidden'); return; }
+  $('tc-photo').src = photo; $('tc-name').textContent = name; c.classList.remove('hidden');
+}
+export function objective(text) { const e = $('objective'); e.textContent = text; e.classList.toggle('hidden', !text); }
+export function civCount(n, max) { const e = $('civ-count'); if (n === null || n === undefined) { e.classList.add('hidden'); return; } e.classList.remove('hidden'); e.textContent = `CIVILIAN CASUALTIES ${n} / ${max}`; e.classList.toggle('warn', n > 0); }
 export function kills(n) { const e = $('kills-count'); if (e.textContent !== String(n)) e.textContent = n; }
 export function zero(m) { $('zero-info').textContent = `ZERO ${m} m`; }
 let msgT = 0, banT = 0;
@@ -116,6 +124,13 @@ export function drawMinimap(s) {
     const dx = x - c, dy = y - c, d = Math.hypot(dx, dy), max = S / 2 - 10;
     const clamped = d > max; if (clamped) { x = c + dx / d * max; y = c + dy / d * max; }
     const pulse = 0.5 + 0.5 * Math.sin(s.t * (m.kind === 'aim' ? 14 : 6));
+    if (m.kind === 'zone') {                       // approximate target area (story mode)
+      mg.save(); mg.strokeStyle = `rgba(255,209,102,${0.55 + pulse * 0.35})`; mg.lineWidth = 2; mg.setLineDash([6, 5]);
+      mg.beginPath(); mg.arc(x, y, Math.max(8, m.r * k), 0, TAU); mg.stroke(); mg.setLineDash([]);
+      mg.fillStyle = 'rgba(255,209,102,.13)'; mg.fill();
+      mg.fillStyle = '#ffd166'; mg.font = 'bold 16px Bahnschrift, Segoe UI'; mg.textAlign = 'center'; mg.fillText('?', x, y + 6); mg.restore();
+      continue;
+    }
     if (m.kind === 'friend') { mg.fillStyle = '#4aa3ff'; mg.beginPath(); mg.arc(x, y, 4, 0, TAU); mg.fill(); continue; }
     if (m.kind === 'warn') {
       mg.strokeStyle = `rgba(255,140,40,${0.5 + pulse * 0.5})`; mg.lineWidth = 2;

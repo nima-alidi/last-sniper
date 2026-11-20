@@ -29,6 +29,7 @@
   <div class="menu-left">
     <div class="logo small">LAST<span>SNIPER</span></div>
     <nav class="menu-list">
+      <button data-go="story"><b>STORY</b><small>Assassination contracts — find the target in the crowd</small></button>
       <button data-go="solo"><b>SOLO</b><small>Hold the tower against enemy snipers</small></button>
       <button data-go="host"><b>HOST GAME</b><small>Create a lobby and invite friends</small></button>
       <button data-go="join"><b>JOIN GAME</b><small>Connect to a friend's lobby by IP</small></button>
@@ -36,6 +37,39 @@
       <button data-go="quit"><b>QUIT</b><small>Exit to desktop</small></button>
     </nav>
     <div class="menu-foot">v1.0 &nbsp;·&nbsp; F11 fullscreen</div>
+  </div>
+</div>
+
+<!-- ============ STORY: CONTRACT LIST ============ -->
+<div id="story-menu" class="screen panel-screen">
+  <div class="panel wide">
+    <h2>STORY — CONTRACTS</h2>
+    <p class="hint">Find the target among the crowd using his photo and a rough area on your minimap. Kill him and his bodyguards, on the street and on the rooftops, will start shooting back — one at a time.</p>
+    <div id="contracts"></div>
+    <div class="actions"><button class="btn ghost" data-back>BACK</button></div>
+  </div>
+</div>
+
+<!-- ============ STORY: DOSSIER ============ -->
+<div id="dossier" class="screen">
+  <div class="folder">
+    <div class="stamp">TOP SECRET</div>
+    <div class="folder-head"><span id="ds-code">CONTRACT 1 · CODENAME</span><span id="ds-title">THE TARGET</span></div>
+    <div class="folder-body">
+      <div class="photo"><span class="clip"></span><img id="ds-photo" alt="target photo"><div class="caption" id="ds-name"></div></div>
+      <div class="facts">
+        <div class="row-f"><b>NAME</b><span id="ds-fullname"></span></div>
+        <div class="row-f"><b>AGE / SEX</b><span id="ds-agesex"></span></div>
+        <div class="row-f"><b>OCCUPATION</b><span id="ds-role"></span></div>
+        <div class="row-f"><b>BUILD</b><span id="ds-build"></span></div>
+        <div class="row-f"><b>DISTINGUISHING</b><span id="ds-clothes"></span></div>
+        <div class="row-f"><b>LAST SEEN</b><span id="ds-seen"></span></div>
+        <div class="row-f"><b>SECURITY</b><span id="ds-sec"></span></div>
+      </div>
+    </div>
+    <p class="intro" id="ds-intro"></p>
+    <div class="objs"><b>OBJECTIVES</b><ul id="ds-objs"></ul></div>
+    <div class="actions"><button class="btn ghost" id="ds-back">BACK</button><button class="btn" id="ds-go">ACCEPT CONTRACT</button></div>
   </div>
 </div>
 
@@ -144,6 +178,9 @@
   <div id="killfeed"></div>
   <div id="center-msg"></div>
   <div id="kill-banner"></div>
+  <div id="target-card" class="hidden"><img id="tc-photo" alt=""><div><small>TARGET</small><b id="tc-name"></b><small class="tab-hint">hold TAB for mission info</small></div></div>
+  <div id="objective" class="hidden"></div>
+  <div id="civ-count" class="hidden"></div>
   <canvas id="minimap"></canvas>
   <div id="hp-box"><div class="hp-label">HEALTH</div><div class="hp-bar"><i id="hp-fill"></i></div></div>
   <div id="kills-box"><div class="k-label">KILLS</div><div id="kills-count">0</div></div>

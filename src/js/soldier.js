@@ -7,7 +7,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { lerp, clamp } from './ctx.js';
 
-const TEAM_COLORS = { A: 0x3a8cff, B: 0xff5a3c, F: 0xe8b14a, N: 0x666666, AI: 0x7a1f1f };
+const TEAM_COLORS = { A: 0x3a8cff, B: 0xff5a3c, F: 0xe8b14a, N: 0x666666, AI: 0x7a1f1f, G: 0x444444 };
 
 function nameSprite(text, color) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d');
@@ -81,7 +81,7 @@ export async function loadCharacters(base = '../assets/models/') {
 }
 
 // uniform tint multiplied over the texture, per team
-const TINT = { A: 0x9db8ff, B: 0xffa08c, F: 0xe8dcc0, N: 0xcccccc, AI: 0xe6d9ae };
+const TINT = { A: 0x9db8ff, B: 0xffa08c, F: 0xe8dcc0, N: 0xcccccc, AI: 0xe6d9ae, G: 0x5c6068 };
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3(), _e = new THREE.Vector3();
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
@@ -211,7 +211,7 @@ function createMixamoSoldier({ team = 'AI', name = '', showName = false } = {}) 
       fwdW.set(0, 0, 1).transformDirection(root.matrixWorld);
       const pitch = clamp(st.pitch || 0, -1, 1) * aimK;
 
-      if (!st.dead) {
+      if (!st.dead && !st.concealed) {
         // lean the upper body with the aim pitch, flinch back when hit
         // strong visible flinch for ~0.6 s when hit (bends back and twists)
         const hk = hitT > 0 ? Math.sin((1 - hitT / 0.6) * Math.PI) : 0;
@@ -237,7 +237,7 @@ function createMixamoSoldier({ team = 'AI', name = '', showName = false } = {}) 
         // head follows the aim
         rotateBoneWorld(B.head, rightW, -pitch * 0.35);
       }
-      rifle.visible = !(st.dead && deadT > 0.3);
+      rifle.visible = !(st.dead && deadT > 0.3) && !st.concealed;
 
       // hitboxes
       B.head.getWorldPosition(wa); wa.y += 0.1;

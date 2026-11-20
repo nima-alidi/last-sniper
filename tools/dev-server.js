@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const port = +process.argv[2] || 5173;
+const port = +process.env.PORT || +process.argv[2] || 5173;
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.hdr': 'application/octet-stream' };
 
 const shotDir = process.env.SHOT_DIR; // optional: lets test scripts save rendered frames (dev only)

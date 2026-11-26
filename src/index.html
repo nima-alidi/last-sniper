@@ -29,22 +29,22 @@
   <div class="menu-left">
     <div class="logo small">LAST<span>SNIPER</span></div>
     <nav class="menu-list">
-      <button data-go="story"><b>STORY</b><small>Assassination contracts — find the target in the crowd</small></button>
+      <button data-go="story"><b>STORY</b><small>Assassination contracts â€” find the target in the crowd</small></button>
       <button data-go="solo"><b>SOLO</b><small>Hold the tower against enemy snipers</small></button>
       <button data-go="host"><b>HOST GAME</b><small>Create a lobby and invite friends</small></button>
       <button data-go="join"><b>JOIN GAME</b><small>Connect to a friend's lobby by IP</small></button>
       <button data-go="settings"><b>SETTINGS</b><small>Controls, graphics and audio</small></button>
       <button data-go="quit"><b>QUIT</b><small>Exit to desktop</small></button>
     </nav>
-    <div class="menu-foot">v1.0 &nbsp;·&nbsp; F11 fullscreen</div>
+    <div class="menu-foot">v1.2 &nbsp;Â·&nbsp; F11 fullscreen</div>
   </div>
 </div>
 
 <!-- ============ STORY: CONTRACT LIST ============ -->
 <div id="story-menu" class="screen panel-screen">
   <div class="panel wide">
-    <h2>STORY — CONTRACTS</h2>
-    <p class="hint">Find the target among the crowd using his photo and a rough area on your minimap. Kill him and his bodyguards, on the street and on the rooftops, will start shooting back — one at a time.</p>
+    <h2>STORY â€” CONTRACTS</h2>
+    <p class="hint">Find the target among the crowd using his photo and a rough area on your minimap. Kill him and his bodyguards, on the street and on the rooftops, will start shooting back â€” one at a time.</p>
     <div id="contracts"></div>
     <div class="actions"><button class="btn ghost" data-back>BACK</button></div>
   </div>
@@ -54,7 +54,7 @@
 <div id="dossier" class="screen">
   <div class="folder">
     <div class="stamp">TOP SECRET</div>
-    <div class="folder-head"><span id="ds-code">CONTRACT 1 · CODENAME</span><span id="ds-title">THE TARGET</span></div>
+    <div class="folder-head"><span id="ds-code">CONTRACT 1 Â· CODENAME</span><span id="ds-title">THE TARGET</span></div>
     <div class="folder-body">
       <div class="photo"><span class="clip"></span><img id="ds-photo" alt="target photo"><div class="caption" id="ds-name"></div></div>
       <div class="facts">
@@ -126,7 +126,7 @@
     </div>
     <div class="actions">
       <button class="btn ghost" id="lobby-leave">LEAVE</button>
-      <span id="lobby-wait" class="hint">Waiting for the host to start the match…</span>
+      <span id="lobby-wait" class="hint">Waiting for the host to start the matchâ€¦</span>
       <button class="btn" id="lobby-start">START MATCH</button>
     </div>
   </div>
@@ -182,16 +182,16 @@
   <div id="objective" class="hidden"></div>
   <div id="civ-count" class="hidden"></div>
   <canvas id="minimap"></canvas>
-  <div id="hp-box"><div class="hp-label">HEALTH</div><div class="hp-bar"><i id="hp-fill"></i></div></div>
+  <div id="hp-box"><div class="hp-label">HEALTH <b id="hp-num">100</b><span id="hp-delta"></span></div><div class="hp-bar"><i id="hp-lag"></i><i id="hp-fill"></i></div></div>
   <div id="kills-box"><div class="k-label">KILLS</div><div id="kills-count">0</div></div>
   <div id="ammo-box">
     <div id="ammo-rounds"></div>
     <div><span id="ammo-mag">5</span><span id="ammo-res">/ 40</span></div>
-    <div id="mag-count">MAGAZINES ×8</div>
+    <div id="mag-count">MAGAZINES Ã—8</div>
     <div id="weapon-name">M-24 BOLT-ACTION</div><div id="ammo-state"></div><div id="zero-info">ZERO 100 m</div>
   </div>
   <div id="fps"></div>
-  <div id="hint-keys">WASD move · SPACE jump · RMB scope · LMB fire · SHIFT hold breath / sprint · C crouch · R reload · Z zoom · PgUp/PgDn zero · TAB scores</div>
+  <div id="hint-keys">WASD move Â· SPACE jump Â· RMB scope Â· LMB fire Â· SHIFT hold breath / sprint Â· C crouch Â· R reload Â· Z zoom Â· PgUp/PgDn zero Â· TAB scores</div>
   <div id="death" class="hidden"><div class="d-title">KILLED</div><div id="death-by"></div><div id="death-timer"></div></div>
   <div id="chat-hud"></div>
   <input id="chat-hud-in" class="hidden" maxlength="120" placeholder="Say:">
@@ -201,3 +201,4 @@
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
+

@@ -112,8 +112,15 @@ table.board td.A{border-left:3px solid var(--teamA)} table.board td.B{border-lef
 #minimap{left:22px;bottom:22px;width:220px;height:220px;border-radius:6px;border:1px solid rgba(255,255,255,.18);background:rgba(8,11,15,.55);box-shadow:0 0 0 1px rgba(0,0,0,.4)}
 #hp-box{left:262px;bottom:28px;width:260px}
 .hp-label{font-size:12px;letter-spacing:.3em;color:#cfd6df}
-.hp-bar{height:8px;background:rgba(0,0,0,.45);margin-top:6px;border:1px solid rgba(255,255,255,.15)}
-.hp-bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#c7d3df,#fff);transition:width .15s}
+.hp-bar{height:10px;background:rgba(0,0,0,.45);margin-top:6px;border:1px solid rgba(255,255,255,.15);position:relative}
+.hp-bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#c7d3df,#fff);transition:width .15s;position:absolute;left:0;top:0}
+.hp-bar i#hp-lag{background:linear-gradient(90deg,#ff7a1a,#ff3b1a);transition:width .9s ease-out .45s}
+#hp-num{margin-left:10px;color:#fff;font-size:15px;letter-spacing:.05em}
+#hp-delta{margin-left:10px;color:#ff5b3a;font-weight:700;font-size:15px;opacity:0}
+#hp-delta.pop{animation:hpPop 1.3s ease-out}
+@keyframes hpPop{0%{opacity:1;transform:translateY(4px) scale(1.5)}15%{transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-14px)}}
+#hp-box.hit{animation:hpShake .35s}
+@keyframes hpShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
 .hp-bar i.low{background:linear-gradient(90deg,#b8322a,#ff5b4d)}
 #ammo-box{right:30px;bottom:24px;text-align:right;background:linear-gradient(270deg,rgba(0,0,0,.45),rgba(0,0,0,0));padding:10px 0 6px 40px}
 #ammo-rounds{display:flex;gap:5px;justify-content:flex-end;margin-bottom:6px}

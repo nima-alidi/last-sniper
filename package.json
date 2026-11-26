@@ -1,7 +1,7 @@
 {
   "name": "last-sniper",
   "productName": "Last Sniper",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "First-person rooftop sniper game with solo and multiplayer modes",
   "main": "main.js",
   "scripts": {
@@ -64,3 +64,4 @@
     }
   }
 }
+

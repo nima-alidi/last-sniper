@@ -13,7 +13,7 @@ const CGEO = new THREE.BoxGeometry(1, 1, 1), CMAT = new THREE.MeshBasicMaterial(
 // opts.story: lower buildings and more parks/plazas around the tower, so the streets stay visible from the tower
 export function buildWorld(seed, opts = {}) {
   const story = !!opts.story;
-  const R = mulberry32(seed);
+  const R = mulberry32(seed), R2 = mulberry32(seed ^ 0x5bd1e995);
   const rr = (a, b) => a + R() * (b - a);
   const pick = a => a[Math.floor(R() * a.length)];
   const root = new THREE.Group(); root.name = 'world';
@@ -122,18 +122,20 @@ export function buildWorld(seed, opts = {}) {
   let windowCount = 0;
   const INTERIOR = new THREE.MeshStandardMaterial({ color: 0x0b0d10, roughness: 1 });
   // returns the offset used (so a second window in the same building can keep its distance) or null
-  function windowNest(bx, bz, bw, bd, top, dist, bid, avoid) {
+  // `low` (story mode): ground-floor windows for bodyguards, drawn from their own random stream so the city itself does not change
+  function windowNest(bx, bz, bw, bd, top, dist, bid, avoid, low = null) {
+    const rnd = low ? low : R;
     const L = Math.hypot(bx, bz) || 1, ox = -bx / L, oz = -bz / L;   // direction to the tower
     const alongX = Math.abs(ox) > Math.abs(oz);
     const nx = alongX ? Math.sign(ox) : 0, nz = alongX ? 0 : Math.sign(oz); // outward face normal
     const faceW = alongX ? bd : bw;
     if (faceW < 7) return null;
     const tx = -nz, tz = nx;                                           // tangent along the face
-    const off = rr(-faceW / 2 + 2.5, faceW / 2 - 2.5);
+    const off = (-faceW / 2 + 2.5) + rnd() * (faceW - 5);
     if (avoid !== undefined && Math.abs(off - avoid) < 4.5) return null;
     // floor height: high enough to be seen from the tower (same rule as rooftop nests), on a storey line
-    const minY = Math.max(6, TOWER.y + 1.65 - 1.6 - 0.15 * dist);
-    const yF = Math.ceil(minY / 3.5) * 3.5 + Math.floor(R() * 2) * 3.5;
+    const minY = low ? 5 : Math.max(6, TOWER.y + 1.65 - 1.6 - 0.15 * dist);
+    const yF = Math.ceil(minY / 3.5) * 3.5 + Math.floor(rnd() * 2) * 3.5;
     if (yF > top - 3.5) return null;
     const fx = bx + nx * (alongX ? bw / 2 : bd / 2), fz = bz + nz * (alongX ? bw / 2 : bd / 2); // face centre line
     const cx = fx + tx * off, cz = fz + tz * off;
@@ -147,7 +149,7 @@ export function buildWorld(seed, opts = {}) {
     for (const s of [-1, 1]) { p = at(D / 2, s * (W / 2 + 0.1)); sbox(p[0], yF + Hh / 2, p[1], 0.2, Hh, D, MAT.concrete, { ry }); }
     p = at(0.45, 0);
     nests.push({ x: p[0], z: p[1], y: yF, dx: nx, dz: nz, busy: false, window: true, bid });
-    windowCount++;
+    if (!low) windowCount++;
     return off;
   }
 
@@ -321,10 +323,14 @@ export function buildWorld(seed, opts = {}) {
       const o1 = windowNest(bx, bz, bw, bd, baseTop, dist, bid);
       if (o1 !== null && R() < 0.6) windowNest(bx, bz, bw, bd, baseTop, dist, bid, o1);
     }
+    if (story && dist > 40 && dist < 235 && baseTop >= 10.6 && R2() < 0.8) {
+      const o1 = windowNest(bx, bz, bw, bd, baseTop, dist, bid, undefined, R2);
+      if (o1 !== null && R2() < 0.7) windowNest(bx, bz, bw, bd, baseTop, dist, bid, o1, R2);
+    }
     decorate(bx, bz, bw, bd, baseTop, mat, near);
     if (wing) decorate(wing.cx, wing.cz, wing.w, wing.d, wing.h, mat, near, true);
 
-    const spawnRoof = dist > 45 && dist < 240 && h >= 26 && h <= 84 && tw >= 11 && td >= 11;
+    const spawnRoof = !opts.bridged && dist > 45 &&dist < 240 && h >= 26 && h <= 84 && tw >= 11 && td >= 11;
     // low-rise houses get a tiled gable roof instead of a flat one
     if (!spawnRoof && h < 26 && massing === 'plain' && R() < 0.6) { gableRoof(bx, bz, bw, bd, h); return { tw, td, h }; }
     parapet(bx, bz, tw, td, h, spawnRoof ? 1.0 : 0.55);
@@ -423,6 +429,21 @@ export function buildWorld(seed, opts = {}) {
     const ground = new THREE.Mesh(g, MAT.asphalt); ground.receiveShadow = true; root.add(ground);
     addCollider(0, -0.5, 0, size, 1, size);
   }
+  // steel footbridge between two roofs at the same level: span a0..a1 along one axis, centred on `c` across it
+  function bridge(alongX, a0, a1, c, y) {
+    const W = 2.6, top = y + 1.0, mid = (a0 + a1) / 2;
+    const bx = (al, ac, l, h, w, yc, m) => (alongX ? sbox(al, yc, ac, l, h, w, m) : sbox(ac, yc, al, w, h, l, m));
+    bx(mid, c, a1 - a0 + 1.6, 0.3, W, top - 0.15, MAT.metalPaint);
+    for (const s of [-1, 1]) {
+      bx(mid, c + s * (W / 2 - 0.06), a1 - a0, 0.07, 0.07, top + 1.0, MAT.darkMetal);       // handrail
+      bx(mid, c + s * (W / 2 - 0.06), a1 - a0, 0.05, 0.05, top + 0.45, MAT.darkMetal);      // lower rail
+      for (let k = 0; k <= 6; k++) bx(a0 + (a1 - a0) * k / 6, c + s * (W / 2 - 0.06), 0.07, 1.0, 0.07, top + 0.5, MAT.darkMetal);
+    }
+    for (const [e, dir] of [[a0, -1], [a1, 1]]) {            // three low steps up from the roof to the deck
+      bx(e + dir * 1.05, c, 0.5, 0.66, W, y + 0.33, MAT.concrete);
+      bx(e + dir * 1.55, c, 0.5, 0.33, W, y + 0.165, MAT.concrete);
+    }
+  }
   const blocks = [];
   for (let i = -N; i <= N; i++) for (let j = -N; j <= N; j++) blocks.push([i, j]);
   blocks.sort((a, b) => Math.hypot(...a) - Math.hypot(...b));
@@ -440,12 +461,25 @@ export function buildWorld(seed, opts = {}) {
     if (r < 0.35) lots = [[cx, cz, S, S]];
     else if (r < 0.68) lots = R() < 0.5 ? [[cx - S / 4, cz, S / 2 - 1.5, S], [cx + S / 4, cz, S / 2 - 1.5, S]] : [[cx, cz - S / 4, S, S / 2 - 1.5], [cx, cz + S / 4, S, S / 2 - 1.5]];
     else lots = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => [cx + a * S / 4, cz + b * S / 4, S / 2 - 1.5, S / 2 - 1.5]);
-    for (const [lx, lz, lw, ld] of lots) {
+    // the two blocks next to the tower (west, south) get a roof at tower level, joined to it by a footbridge (not in story mode)
+    const bridged = !story && ((i === -1 && j === 0) || (i === 0 && j === 1));
+    if (bridged) lots = [[cx, cz, S, S]];
+    let blockH = 0;
+    lots.forEach(([lx, lz, lw, ld], li) => {
       const dd = Math.hypot(lx, lz);
-      const h = story && dd < 175 ? (R() < 0.8 ? rr(7, 21) : rr(21, 38)) : dd < 260 ? rr(16, 76) : rr(22, 140);
-      const round = lots.length === 1 && dd > 40 && R() < 0.18;
-      building(lx, lz, lw * rr(0.88, 1), ld * rr(0.88, 1), Math.round(h), dd, { round });
-    }
+      let h = story && dd < 175 ? (R() < 0.8 ? rr(7, 21) : rr(21, 38)) : dd < 260 ? rr(16, 76) : rr(22, 140);
+      // buildings of one block are about equally high, so you can hop from roof to roof
+      if (!story && dd < 260) { if (li === 0) blockH = h; else h = blockH + (h - blockH) * 0.1; }
+      const round = !bridged && lots.length === 1 && dd > 40 && R() < 0.18;
+      if (bridged) h = TOWER.y;
+      const fi = footprints.length;
+      building(lx, lz, lw * rr(0.88, 1), ld * rr(0.88, 1), Math.round(h), dd, { round, bridged, noSetback: bridged });
+      if (bridged) {
+        const f = footprints[fi];
+        if (i === -1) bridge(true, f.x + f.w / 2, -TOWER.half, 0, TOWER.y);
+        else bridge(false, TOWER.half, f.z - f.d / 2, 0, TOWER.y);
+      }
+    });
     if (dist < 330) {
       for (let k = -BS / 2 + 4; k <= BS / 2 - 4; k += 9) {
         for (const [px, pz] of [[cx + k, cz - BS / 2 + 1.4], [cx + k, cz + BS / 2 - 1.4], [cx - BS / 2 + 1.4, cz + k], [cx + BS / 2 - 1.4, cz + k]]) if (R() < 0.5) treeSpots.push([px, 0.18, pz]);

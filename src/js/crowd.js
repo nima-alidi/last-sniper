@@ -122,6 +122,13 @@ export function randomNext(edge, panicFrom, bias = 1) {
   return opts[opts.length - 1];
 }
 
+// friends walk together: the first of them to reach a junction decides, the other one takes the same way
+function groupNext(p, e) {
+  const g = p.group; let n = g.next.get(e);
+  if (!n) { n = randomNext(e, null, p.bias); g.next.set(e, n); if (g.next.size > 30) g.next.delete(g.next.keys().next().value); }
+  return n;
+}
+
 // ---------------------------------------------------------------- crowd
 const angDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
 let pedId = 1;
@@ -130,7 +137,8 @@ export class Crowd {
     this.graph = graph; this.peds = []; this.root = new THREE.Group(); scene.add(this.root);
     this.frame = 0; this.cam = new THREE.Vector3(); this.panicPoint = null; this.trailT = 0;
   }
-  spawn(look, { kind = 'civ', edge = null, t = Math.random(), speed = rnd(1.0, 1.55), bias = 1 } = {}) {
+  spawn(look, { kind = 'civ', edge = null, t = Math.random(), speed = (Math.random() < 0.15 ? rnd(0.75, 1.05) : rnd(1.05, 1.6)), bias = 1, group = null, off = null } = {}) {
+    if (look.scale === undefined) look = { ...look, scale: rnd(0.93, 1.07) };       // people are not all the same height
     const g = this.graph;
     if (!edge) {
       const list = g.visibleEdges && g.visibleEdges.length ? g.visibleEdges : g.edges;
@@ -138,8 +146,8 @@ export class Crowd {
       edge = list[list.length - 1]; for (let i = 0; i < list.length; i++) { r -= w[i]; if (r <= 0) { edge = list[i]; break; } }
     }
     const person = createPerson(look);
-    const off = edge.cross ? rnd(-1.6, 1.6) : rnd(-0.4, 1.3);
-    const ped = { id: pedId++, kind, person, look, walker: new Walker(edge, t, off), speed, bias, state: 'walk', pauseT: rnd(6, 25), idleT: 0, hp: 100,
+    if (off === null) off = edge.cross ? rnd(-1.6, 1.6) : rnd(-0.4, 1.3);
+    const ped = { id: pedId++, kind, person, look, group, walker: new Walker(edge, t, off), speed, bias, state: 'walk', pauseT: rnd(6, 25), idleT: 0, hp: 100,
       yaw: 0, fleeT: 0, deadT: 0, accum: 0, dist: 0, trail: [], trailT: 0, panicFrom: null, extra: null };
     ped.yaw = ped.walker.heading;
     for (const h of person.hits) h.userData.owner = ped;
@@ -180,8 +188,8 @@ export class Crowd {
       } else if (p.state === 'idle') {
         p.idleT -= dt; if (p.idleT <= 0) { p.state = 'walk'; p.person.play('walk', 0.3, p.speed / 1.3); }
       } else if (p.state === 'walk') {
-        w.advance(p.speed * dt, e => (p.override ? p.override(e) : randomNext(e, null, p.bias)));
-        if (p.kind === 'civ') { p.pauseT -= dt; if (p.pauseT <= 0) { p.state = 'idle'; p.idleT = rnd(3, 8); p.pauseT = rnd(10, 30); p.person.play('idle', 0.3); } }
+        w.advance(p.speed * dt, e => (p.override ? p.override(e) : p.group ? groupNext(p, e) : randomNext(e, null, p.bias)));
+        if (p.kind === 'civ' && !p.group) { p.pauseT -= dt; if (p.pauseT <= 0) { p.state = 'idle'; p.idleT = rnd(3, 8); p.pauseT = rnd(10, 30); p.person.play('idle', 0.3); } }
       }
       // smooth facing
       if (p.state !== 'dead') { p.yaw += clamp(angDiff(p.yaw, w.heading), -6 * dt, 6 * dt); }
@@ -190,8 +198,8 @@ export class Crowd {
       const vis = p.dist < 300; r.visible = vis;
       if (vis) {
         p.accum += dt;
-        if (p.dist < 110 || (this.frame + p.id) % 3 === 0) { p.person.update(p.accum); p.accum = 0; }
-        const shadow = p.dist < 110; if (p.person.mesh.castShadow !== shadow) p.person.mesh.castShadow = shadow;
+        if (p.dist < 90 || (this.frame + p.id) % (p.dist < 160 ? 2 : 4) === 0) { p.person.update(p.accum); p.accum = 0; }
+        const shadow = p.dist < 100; if (p.person.mesh.castShadow !== shadow) p.person.mesh.castShadow = shadow;
       }
       if (p.kind === 'target' || p.trailOn) {            // remember where the target has been (bodyguards follow this trail)
         p.trailT += dt; if (p.trailT > 0.1) { p.trailT = 0; p.trail.push({ x: w.x, z: w.z, h: p.yaw }); if (p.trail.length > 90) p.trail.shift(); }

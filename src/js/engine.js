@@ -28,7 +28,7 @@ export const sun = new THREE.DirectionalLight(0xfff1dc, 3.2);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
 Object.assign(sun.shadow.camera, { left: -190, right: 190, top: 190, bottom: -190, near: 50, far: 1600 });
-sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.35;
+sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.35; sun.shadow.radius = 2.5;
 scene.add(sun, sun.target);
 export const hemi = new THREE.HemisphereLight(0xbcd3f2, 0x5e5446, 0.25);
 scene.add(hemi);
@@ -48,16 +48,20 @@ export const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.5,
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 export const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, vig: { value: 0.7 }, dmg: { value: 0 }, sat: { value: 1.06 } },
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, vig: { value: 0.7 }, dmg: { value: 0 }, sat: { value: 1.06 }, px: { value: new THREE.Vector2(1 / 1920, 1 / 1080) } },
   vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-  fragmentShader: `uniform sampler2D tDiffuse;uniform float time,vig,dmg,sat;varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse;uniform float time,vig,dmg,sat;uniform vec2 px;varying vec2 vUv;
     void main(){
       vec2 d=vUv-.5;
       float ca=(.0012+dmg*.006)*length(d)*2.;
       vec3 c=vec3(texture2D(tDiffuse,vUv+d*ca).r,texture2D(tDiffuse,vUv).g,texture2D(tDiffuse,vUv-d*ca).b);
+      // light sharpening (unsharp mask) brings out the texture detail like a camera lens would
+      vec3 bl=(texture2D(tDiffuse,vUv+vec2(px.x,0.)).rgb+texture2D(tDiffuse,vUv-vec2(px.x,0.)).rgb+texture2D(tDiffuse,vUv+vec2(0.,px.y)).rgb+texture2D(tDiffuse,vUv-vec2(0.,px.y)).rgb)*.25;
+      c+=clamp(c-bl,-.12,.12)*.55;
       float l=dot(c,vec3(.299,.587,.114));
       c=mix(vec3(l),c,sat*(1.-dmg*.6));
-      c=(c-.5)*1.04+.5;
+      c=(c-.5)*1.06+.5;
+      c=pow(max(c,0.),vec3(1.03));                       // slightly deeper shadows, more filmic contrast
       c*=mix(vec3(.96,.99,1.04),vec3(1.04,1.,.95),smoothstep(.15,.85,l));
       c*=1.-dot(d,d)*vig;
       float n=fract(sin(dot(vUv*vec2(12.9898,78.233)+time,vec2(1.)))*43758.5453);
@@ -73,6 +77,7 @@ export function resize() {
   renderer.setPixelRatio(DPR); renderer.setSize(w, h);
   composer.setPixelRatio(DPR); composer.setSize(w, h);
   camera.aspect = w / h; camera.updateProjectionMatrix();
+  grade.uniforms.px.value.set(1 / (w * DPR), 1 / (h * DPR));
 }
 addEventListener('resize', resize);
 
@@ -80,7 +85,7 @@ export function applyQuality(q = settings.quality) {
   const presets = {
     low: { dpr: 1, shadow: 1024, bloom: false, ao: false, msaa: 0 },
     medium: { dpr: 1, shadow: 2048, bloom: true, ao: false, msaa: 4 },
-    high: { dpr: Math.min(devicePixelRatio || 1, 1.5), shadow: 4096, bloom: true, ao: false, msaa: 4 },
+    high: { dpr: Math.min(devicePixelRatio || 1, 1.5), shadow: 4096, bloom: true, ao: true, msaa: 4 },
     ultra: { dpr: Math.min(devicePixelRatio || 1, 2), shadow: 4096, bloom: true, ao: true, msaa: 4 },
   };
   const p = presets[q] || presets.high;
@@ -126,7 +131,7 @@ export async function loadSky(url) {
   scene.background = tex;
   scene.backgroundIntensity = 1.0;
   scene.environment = env;
-  scene.environmentIntensity = 0.9;
+  scene.environmentIntensity = 1.1;                 // stronger sky reflections on glass, metal and wet asphalt
   if (hn) {
     const k = 1 / hn;
     scene.fog.color.setRGB(hor[0] * k, hor[1] * k, hor[2] * k, THREE.LinearSRGBColorSpace);

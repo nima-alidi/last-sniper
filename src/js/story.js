@@ -51,12 +51,17 @@ export function prepareStory(idx) {
 
   // --- the crowd (nobody looks exactly like the target; a few decoys wear the same colour)
   let decoys = 0;
-  const crowdSize = Math.round(c.civilians * ({ low: 0.55, medium: 0.8 }[settings.quality] || 1));   // lighter crowd on slower PCs
+  const crowdSize = Math.round(c.civilians * 2.3 * ({ low: 0.5, medium: 0.75 }[settings.quality] || 1));   // busy streets; lighter crowd on slower PCs
   for (let i = 0; i < crowdSize; i++) {
     let l = randomLook(Math.random);
     if (l.model === look.model && l.top === look.top) l = randomLook(Math.random);
-    if (decoys < 4 && i % 11 === 5 && look.top !== undefined) { l.top = look.top; l.acc = []; if (l.model === look.model) l.model = 'casual'; decoys++; }
-    crowd.spawn(l);
+    if (decoys < 6 && i % 17 === 5 && look.top !== undefined) { l.top = look.top; l.acc = []; if (l.model === look.model) l.model = 'casual'; decoys++; }
+    const p = crowd.spawn(l);
+    if (Math.random() < 0.3 && i < crowdSize - 1) {            // a friend walks along
+      p.group = { next: new Map() }; i++;
+      const w = p.walker;
+      crowd.spawn(randomLook(Math.random), { edge: w.edge, t: clamp(w.t + 0.02, 0, 0.98), speed: p.speed, bias: p.bias, group: p.group, off: w.off + (w.edge.cross ? 0.9 : 0.8) });
+    }
   }
 
   // --- bodyguards walking with the target
@@ -258,7 +263,28 @@ function planRoute(g, goal) {
   else { g.route = [e0, ...fwd]; g.walker = new Walker(e0, t, 0); }
   g.ri = 0;
 }
+// after the shot the bodyguards run into a nearby building and shoot from one of its windows
+function pickBuilding(g) {
+  const list = G.world.nests.filter(n => n.window && !n.busy && Math.hypot(n.x - g.x, n.z - g.z) < 120 && visibleFromTower(n));
+  if (!list.length) return false;
+  list.sort((a, b) => Math.hypot(a.x - g.x, a.z - g.z) - Math.hypot(b.x - g.x, b.z - g.z));
+  const nest = list[Math.floor(Math.random() * Math.min(3, list.length))];
+  nest.busy = true; g.nest = nest; return true;
+}
+function enterBuilding(g) {
+  const n = g.nest;
+  g.inside = true; g.state = 'incoming'; g.t = rnd(2.5, 4); g.x = n.x; g.z = n.z; g.wait = 0; g.s.root.visible = false;
+  M.snipers.push(g);
+  hud.message('A BODYGUARD RAN INTO A BUILDING — WATCH THE WINDOWS', 3);
+}
 function startMoving(g) {
+  if (!g.nestTried) { g.nestTried = true; pickBuilding(g); }
+  if (g.nest && !g.inside) {
+    const goal = M.graph.nearestNode(g.nest.x, g.nest.z); g.goal = goal; planRoute(g, goal);
+    if (g.walker) g.state = 'run';
+    else { g.state = 'enter'; if (g.node) { g.x = g.node.x; g.z = g.node.z; } }
+    return;
+  }
   const goal = pickSpot(g); if (!goal) { g.state = 'ready'; g.readyT = 1; return; }
   g.goal = goal; planRoute(g, goal);
   g.state = g.walker ? 'run' : 'ready'; g.readyT = rnd(0.6, 1.4);
@@ -287,7 +313,14 @@ function updateGuard(g, dt) {
       const w = g.walker;
       w.advance(g.speed * dt, () => (g.route[++g.ri] || null));
       g.x = w.x; g.z = w.z; faceYaw = w.heading;
-      if (w.arrived) { g.state = 'ready'; g.readyT = rnd(0.5, 1.2); g.x = w.edge.b.x; g.z = w.edge.b.z; g.node = w.edge.b; }
+      if (w.arrived) { g.state = g.nest && !g.inside ? 'enter' : 'ready'; g.readyT = rnd(0.5, 1.2); g.x = w.edge.b.x; g.z = w.edge.b.z; g.node = w.edge.b; }
+      break;
+    }
+    case 'enter': {
+      moving = true; run = true;
+      const dx = g.nest.x - g.x, dz = g.nest.z - g.z, d = Math.hypot(dx, dz);
+      if (d < 1.8) { enterBuilding(g); break; }
+      const st = Math.min(d, g.speed * dt); g.x += dx / d * st; g.z += dz / d * st; faceYaw = Math.atan2(dx, dz);
       break;
     }
     case 'ready': {
@@ -327,7 +360,7 @@ function spawnSniper(nest) {
 function sniperRelocate(h) {
   const old = h.nest;
   const eyeY = G.world.spawns.find(s => s.tower).y + 1.65;
-  const sib = G.world.nests.filter(n => n.bid === old.bid && n !== old && !n.busy && (eyeY - (n.y + 1.6)) / Math.max(1, Math.hypot(n.x, n.z)) < 0.17 && visibleFromTower(n));
+  const sib = G.world.nests.filter(n => n.bid === old.bid && n !== old && !n.busy && (h.inside || (eyeY - (n.y + 1.6)) / Math.max(1, Math.hypot(n.x, n.z)) < 0.17) && visibleFromTower(n));
   if (!sib.length) { h.state = 'cover'; h.t = rnd(4, 6.5); hud.message('WOUNDED SHOOTER IS KEEPING HIS HEAD DOWN', 2.2); return; }
   const nest = sib[Math.floor(Math.random() * sib.length)];
   old.busy = false; nest.busy = true; h.nest = nest;
@@ -393,7 +426,7 @@ export function updateStory(dt) {
   }
   M.pendingShot = null;
 
-  for (const g of M.guards) updateGuard(g, dt);
+  for (const g of M.guards) if (!g.inside) updateGuard(g, dt);
   for (const s of M.snipers) updateSniper(s, dt);
 
   if (M.phase === 'alert' && !M.ended) {
@@ -403,7 +436,7 @@ export function updateStory(dt) {
     // only one hostile may aim at a time
     M.turnCd -= dt;
     if (!M.turn && M.turnCd <= 0 && p.alive) {
-      const ready = M.hostiles.filter(h => h.ready && h.state !== 'dead' && hasLOS(h.kind === 'sniper' ? _v.set(h.nest.x, h.nest.y + 1.5, h.nest.z) : h.s.muzzleWorld(_v.set(0, 0, 0)), eye(_v2)));
+      const ready = M.hostiles.filter(h => h.ready && h.state !== 'dead' && hasLOS(h.nest && (h.kind === 'sniper' || h.inside) ? _v.set(h.nest.x, h.nest.y + 1.5, h.nest.z) : h.s.muzzleWorld(_v.set(0, 0, 0)), eye(_v2)));
       if (ready.length) { const h = ready[Math.floor(Math.random() * ready.length)]; h.state = 'aim'; h.aimT = 0; M.turn = h; sfx.warn(); }
     }
     const alive = M.hostiles.filter(h => h.state !== 'dead').length + M.sniperQueue.length;

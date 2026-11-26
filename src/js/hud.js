@@ -36,7 +36,20 @@ export function compass(yaw, markers = []) {
 
 // ---------- DOM widgets ----------
 export function show(v) { $('hud').classList.toggle('hidden', !v); if (!v) scoreboard(null); }
-export function health(hp) { const f = $('hp-fill'); f.style.width = clamp(hp, 0, 100) + '%'; f.classList.toggle('low', hp < 35); }
+let lastHp = 100;
+export function health(hp) {
+  const f = $('hp-fill'), lag = $('hp-lag'), v = clamp(hp, 0, 100);
+  f.style.width = v + '%'; f.classList.toggle('low', v < 35);
+  if (v < lastHp - 0.4) {                                  // lost health: the lost part stays orange for a moment, a "-N" pops up
+    const d = $('hp-delta'), box = $('hp-box');
+    d.textContent = '−' + Math.round(lastHp - v); d.classList.remove('pop'); void d.offsetWidth; d.classList.add('pop');
+    box.classList.remove('hit'); void box.offsetWidth; box.classList.add('hit');
+    lag.style.transition = 'none'; lag.style.width = clamp(lastHp, 0, 100) + '%'; void lag.offsetWidth; lag.style.transition = '';
+  }
+  else if (v > lastHp + 0.4) lag.style.transition = 'none';
+  lag.style.width = v + '%';
+  lastHp = v; $('hp-num').textContent = Math.ceil(v);
+}
 let lastAmmoKey = '';
 export function ammo(mag, res, state, magSize = 5) {
   const key = `${mag}|${res}|${state}`;
